@@ -1,0 +1,5 @@
+(executable
+ (name tensor_playground_web)
+ (modes js)
+ (modules Tensor_playground_web)
+ (libraries brr tensor_playground))

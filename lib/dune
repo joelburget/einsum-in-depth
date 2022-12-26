@@ -1,0 +1,12 @@
+(library
+ (name tensor_playground)
+ (inline_tests)
+ (preprocess
+  (pps ppx_expect)))
+
+(menhir
+ (modules Parser)
+ (flags --explain --dump))
+
+(ocamllex
+ (modules Lexer))
