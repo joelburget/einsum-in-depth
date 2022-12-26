@@ -3,3 +3,13 @@
  (modes js)
  (modules Tensor_playground_web)
  (libraries brr tensor_playground))
+
+(rule
+ (targets tensor_playground_web.js)
+ (deps tensor_playground_web.bc.js)
+ (action
+  (run cp %{deps} %{targets})))
+
+(alias
+ (name app)
+ (deps tensor_playground_web.js index.html))
