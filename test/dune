@@ -1,4 +1,0 @@
-; (test
-;  (name Parser_test)
-;  (inline_tests)
-;  (libraries tensor_playground))

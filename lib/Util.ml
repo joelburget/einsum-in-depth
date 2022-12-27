@@ -1,4 +1,4 @@
 let rec join ?(sep = "") = function
   | [] -> ""
   | [ x ] -> x
-  | x :: xs -> x ^ ", " ^ join ~sep xs
+  | x :: xs -> x ^ sep ^ join ~sep xs

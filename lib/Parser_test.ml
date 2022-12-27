@@ -1,5 +1,3 @@
-open Tensor_playground
-
 type 'a parser = (Lexing.lexbuf -> Parser.token) -> Lexing.lexbuf -> 'a
 
 let parse : type a. (a -> string) -> a parser -> string -> unit =
