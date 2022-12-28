@@ -5,8 +5,14 @@
   (pps ppx_expect)))
 
 (menhir
- (modules Parser)
+ (modules Einsum_parser)
  (flags --explain --dump))
 
 (ocamllex
- (modules Lexer))
+ (modules Einsum_lexer))
+
+(menhir
+ (modules Type_parser))
+
+(ocamllex
+ (modules Type_lexer))

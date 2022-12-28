@@ -1,5 +1,5 @@
 {
-  open Parser
+  open Einsum_parser
 
   exception Error of string
   exception Eof

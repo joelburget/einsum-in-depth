@@ -1,4 +1,4 @@
-type 'a parser = (Lexing.lexbuf -> Parser.token) -> Lexing.lexbuf -> 'a
+type 'a parser = (Lexing.lexbuf -> Einsum_parser.token) -> Lexing.lexbuf -> 'a
 
 let parse : type a. (a -> string) -> a parser -> string -> unit =
  fun to_string parser str ->
@@ -8,19 +8,20 @@ let parse : type a. (a -> string) -> a parser -> string -> unit =
       let result =
         parser
           (fun lexbuf ->
-            let tok = Lexer.token lexbuf in
+            let tok = Einsum_lexer.token lexbuf in
             tok)
           lexbuf
       in
       print_endline (to_string result);
       flush stdout
     done
-  with Lexer.Eof -> ()
+  with Einsum_lexer.Eof -> ()
 
 let parse_rewrite : string -> unit =
-  parse Einops.Rewrite.to_string Parser.rewrite
+  parse Einops.Rewrite.to_string Einsum_parser.rewrite
 
-let parse_atom : string -> unit = parse Einops.Atom.to_string Parser.atom_top
+let parse_atom : string -> unit =
+  parse Einops.Atom.to_string Einsum_parser.atom_top
 
 let%expect_test "Atoms" =
   parse_atom "a";
