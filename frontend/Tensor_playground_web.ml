@@ -47,6 +47,7 @@ let () =
   let a_signal, set_a = S.create "" in
   let b_signal, set_b = S.create "" in
 
+  (* TODO: use Evr.on_el? *)
   Brr_note.Evr.endless_listen (El.as_target a_input) Ev.change (fun _evt ->
       set_a (Jstr.to_string (El.prop El.Prop.value a_input)));
   Brr_note.Evr.endless_listen (El.as_target b_input) Ev.change (fun _evt ->
