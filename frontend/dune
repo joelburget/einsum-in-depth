@@ -1,7 +1,7 @@
 (executable
  (name tensor_playground_web)
  (modes js)
- (modules Tensor_playground_web Isometric)
+ (modules Broadcast_explanation Isometric Tensor_playground_web)
  (js_of_ocaml
   (javascript_files isometric.js))
  (libraries brr brr.note fmt note tensor_playground))

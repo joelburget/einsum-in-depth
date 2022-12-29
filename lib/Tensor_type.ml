@@ -24,6 +24,7 @@ end
 module Elem = struct
   type t = Concrete of int | Variable of string
 
+  let one = Concrete 1
   let to_string = function Concrete n -> Int.to_string n | Variable v -> v
   let is_concrete = function Concrete _ -> true | _ -> false
   let get_var = function Concrete _ -> None | Variable v -> Some v
