@@ -7,17 +7,21 @@ let set_children, input, prop, as_target, div, txt', table, tbody, td, tr =
   El.(set_children, input, prop, as_target, div, txt', table, tbody, td, tr)
 
 let process_type_input str =
-  str |> Lexing.from_string |> Type_parser.ty Type_lexer.token
+  str |> Lexing.from_string |> Type_parser.lax Type_lexer.token
 
 module Parse_result = struct
-  type t = Ok of Tensor_type.t | No_input | Error of string
+  type t = Ok of Tensor_type.t * Tensor_type.bracketed | Error of string
 end
 
-(* TODO: allow missing brackets *)
 let parse str =
-  try Parse_result.Ok (process_type_input str) with
+  try
+    Fmt.pr "attempting to parse %S\n" str;
+    let ty, bracketed = process_type_input str in
+    Parse_result.Ok (ty, bracketed)
+  with
   | Type_lexer.Eof ->
-      if str = "" then No_input else Error "Unknown error (unclosed bracket?)"
+      if str = "" then Ok ([], Unbracketed)
+      else Error "Unknown error (unclosed bracket?)"
   | Type_lexer.Error msg -> Error msg
 
 let combine : Tensor_type.Elem.t -> Tensor_type.Elem.t -> Tensor_type.Elem.t =
@@ -34,8 +38,13 @@ let replicate n item = List.init n (fun _ -> item)
 let pad n x xs = replicate (n - List.length xs) x @ xs
 let txt_td str = td [ txt' str ]
 
-let explain : Tensor_type.t -> Tensor_type.t -> El.t list =
- fun xs ys ->
+let explain' :
+    Tensor_type.t ->
+    Tensor_type.bracketed ->
+    Tensor_type.t ->
+    Tensor_type.bracketed ->
+    El.t list =
+ fun xs _xs_bracketed ys _ys_bracketed ->
   let max_len = max (List.length xs) (List.length ys) in
   let padded_xs = pad max_len Tensor_type.Elem.one xs in
   let padded_ys = pad max_len Tensor_type.Elem.one ys in
@@ -98,8 +107,8 @@ let explain : Tensor_type.t -> Tensor_type.t -> El.t list =
 let update_output : (string * string) signal -> El.t list signal =
   S.map (fun (a, b) ->
       match (parse a, parse b) with
-      | Ok a, Ok b -> explain a b
-      | No_input, _ | _, No_input -> [ txt' "(empty input)" ]
+      | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
+          explain' a a_bracketed b b_bracketed
       | Error msg, Ok _ -> [ txt' "Error parsing A: "; txt' msg ]
       | Ok _, Error msg -> [ txt' "Error parsing B: "; txt' msg ]
       | Error msg1, Error msg2 ->

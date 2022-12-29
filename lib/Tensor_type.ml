@@ -1,5 +1,7 @@
 (* TODO: rename module to Tensor_shape? *)
 
+type bracketed = Bracketed | Unbracketed
+
 module Unify_mode = struct
   type t = Unify_concrete_variables | Dont_unify_concrete_variables
 end
