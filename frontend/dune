@@ -4,7 +4,7 @@
  (modules Tensor_playground_web Isometric)
  (js_of_ocaml
   (javascript_files isometric.js))
- (libraries brr brr.note tensor_playground note))
+ (libraries brr brr.note fmt note tensor_playground))
 
 (rule
  (targets tensor_playground_web.js)

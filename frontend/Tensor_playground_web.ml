@@ -23,12 +23,51 @@ let parse str =
   | Type_lexer.Error msg -> Error msg
 
 let explain : Tensor_type.t -> Tensor_type.t -> El.t list =
- fun _rev_a _rev_b -> El.[ txt' "TODO" ]
+ fun xs ys ->
+  let len_xs = List.length xs in
+  let len_ys = List.length ys in
+  let max_len = max len_xs len_ys in
+  let pad n = List.init n (fun _ -> Tensor_type.Elem.Concrete 1) in
+  let padded_xs = pad (max_len - len_xs) @ xs in
+  let padded_ys = pad (max_len - len_ys) @ ys in
+  El.
+    [
+      div
+        [ txt' "First we align the two tensor types, starting from the right." ];
+      table
+        [
+          tbody
+            [
+              tr
+                (padded_xs
+                |> List.map Tensor_type.Elem.to_string
+                |> List.map txt');
+              tr
+                (padded_ys
+                |> List.map Tensor_type.Elem.to_string
+                |> List.map txt');
+            ];
+        ];
+      div
+        [
+          txt'
+            "Because the number of dimensions is not equal, prepend 1s to the \
+             front of the tensor with fewer dimensions to make them the same \
+             length.";
+        ];
+      div
+        [
+          txt'
+            "Check that in each position, the tensor sizes are equal, or one \
+             of them is 1.";
+        ];
+      div [ txt' "Finally, take the maximum of each pair of sizes" ];
+    ]
 
 let update_output : (string * string) signal -> El.t list signal =
   S.map (fun (a, b) ->
       match (parse a, parse b) with
-      | Ok a, Ok b -> explain (List.rev a) (List.rev b)
+      | Ok a, Ok b -> explain a b
       | No_input, _ | _, No_input -> El.[ txt' "(empty input)" ]
       | Error msg, Ok _ -> El.[ txt' "Error parsing A: "; txt' msg ]
       | Ok _, Error msg -> El.[ txt' "Error parsing B: "; txt' msg ]
@@ -40,14 +79,14 @@ let update_output : (string * string) signal -> El.t list signal =
             ])
 
 let () =
-  let a_input = El.input () in
-  let b_input = El.input () in
+  let a_init, b_init = ("[1, 2]", "[2, 3, 2]") in
+  let a_input = El.input ~at:[ At.value (Jstr.of_string a_init) ] () in
+  let b_input = El.input ~at:[ At.value (Jstr.of_string b_init) ] () in
   let result_output = El.div [] in
 
-  let a_signal, set_a = S.create "" in
-  let b_signal, set_b = S.create "" in
+  let a_signal, set_a = S.create a_init in
+  let b_signal, set_b = S.create b_init in
 
-  (* TODO: use Evr.on_el? *)
   Brr_note.Evr.endless_listen (El.as_target a_input) Ev.change (fun _evt ->
       set_a (Jstr.to_string (El.prop El.Prop.value a_input)));
   Brr_note.Evr.endless_listen (El.as_target b_input) Ev.change (fun _evt ->
