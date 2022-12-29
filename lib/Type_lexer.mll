@@ -8,8 +8,6 @@
 rule token = parse
 | [' ' '\t']
     { token lexbuf }
-| ['a'-'z' 'A'-'Z']+ as var
-    { VAR var }
 | ['0'-'9']+ as num
     { NUM num }
 | ","

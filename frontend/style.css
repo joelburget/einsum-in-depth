@@ -7,3 +7,7 @@ th, td {
   padding: 2px;
 }
 
+.row {
+  display: flex;
+  flex-direction: row;
+}

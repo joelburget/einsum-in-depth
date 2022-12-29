@@ -2,7 +2,8 @@
  (name tensor_playground)
  (inline_tests)
  (preprocess
-  (pps ppx_expect)))
+  (pps ppx_expect))
+ (libraries fmt))
 
 (menhir
  (modules Einsum_parser)

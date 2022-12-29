@@ -2,24 +2,11 @@ open Brr
 open Brr_note
 open Tensor_playground
 open Note
+open Frontend_util
+open Util
 
 let set_children, input, prop, as_target, div, txt', table, tbody, td, tr =
   El.(set_children, input, prop, as_target, div, txt', table, tbody, td, tr)
-
-let process_type_input str =
-  str |> Lexing.from_string |> Type_parser.lax Type_lexer.token
-
-let parse str =
-  try
-    Fmt.pr "attempting to parse %S\n" str;
-    let ty, bracketed = process_type_input str in
-    Ok (ty, bracketed)
-  with
-  | Type_lexer.Eof ->
-      (* TODO: handle empty case with more explanation or fail *)
-      if str = "" then Ok ([], Unbracketed)
-      else Error "Unknown error (unclosed bracket?)"
-  | Type_lexer.Error msg -> Error msg
 
 let combine : Tensor_type.Elem.t -> Tensor_type.Elem.t -> Tensor_type.Elem.t =
  fun x y ->
@@ -31,10 +18,6 @@ let combine : Tensor_type.Elem.t -> Tensor_type.Elem.t -> Tensor_type.Elem.t =
       if x = y then Variable x
       else Fmt.failwith "Two different variables (%s, %s)!" x y
 
-let replicate n item = List.init n (fun _ -> item)
-let pad n x xs = replicate (n - List.length xs) x @ xs
-let txt_td str = td [ txt' str ]
-
 let explain' :
     Tensor_type.t ->
     Tensor_type.bracketed ->
@@ -45,9 +28,7 @@ let explain' :
   let max_len = max (List.length xs) (List.length ys) in
   let padded_xs = pad max_len Tensor_type.Elem.one xs in
   let padded_ys = pad max_len Tensor_type.Elem.one ys in
-  let unified =
-    List.combine padded_xs padded_ys |> List.map (fun (x, y) -> max x y)
-  in
+  let unified = List.map2 max padded_xs padded_ys in
 
   let mk_align_row len items =
     items
@@ -103,7 +84,7 @@ let explain' :
 
 let update_output : (string * string) signal -> El.t list signal =
   S.map (fun (a, b) ->
-      match (parse a, parse b) with
+      match (parse_type a, parse_type b) with
       | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
           explain' a a_bracketed b b_bracketed
       | Error msg, Ok _ -> [ txt' "Error parsing A: "; txt' msg ]

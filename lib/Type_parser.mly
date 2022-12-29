@@ -1,17 +1,15 @@
-%token <string> VAR
 %token <string> NUM
 %token COMMA
 %token LBRACKET RBRACKET
 
-%start <Tensor_type.t> bracketed
-%start <Tensor_type.t> unbracketed
-%start <Tensor_type.t * Tensor_type.bracketed> lax
+%start <int list> bracketed
+%start <int list> unbracketed
+%start <int list * Tensor_type.bracketed> lax
 
 %%
 
 item:
-  | n = NUM { Concrete (int_of_string n) }
-  | v = VAR { Variable v }
+  | n = NUM { int_of_string n }
 
 unbracketed:
   | items = separated_list(COMMA, item)

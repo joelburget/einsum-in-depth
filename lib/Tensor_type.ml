@@ -26,6 +26,10 @@ end
 module Elem = struct
   type t = Concrete of int | Variable of string
 
+  let pp ppf = function
+    | Concrete n -> Fmt.pf ppf "%d" n
+    | Variable x -> Fmt.pf ppf "%s" x
+
   let one = Concrete 1
   let to_string = function Concrete n -> Int.to_string n | Variable v -> v
   let is_concrete = function Concrete _ -> true | _ -> false
@@ -99,6 +103,8 @@ module Elem = struct
 end
 
 type t = Elem.t list
+
+let pp = Fmt.brackets (Fmt.list ~sep:Fmt.comma Elem.pp)
 
 let to_string elems =
   let inside = elems |> List.map Elem.to_string |> Util.join ~sep:"; " in

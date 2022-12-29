@@ -5,7 +5,8 @@ open Isometric
 let render_tensor_type t = El.txt' (Tensor_type.to_string t)
 
 let () =
-  Broadcast_explanation.explain (Document.body G.document) "[1, 2]" "[2, 3, 2]"
+  (* Broadcast_explanation.explain (Document.body G.document) "[1, 2]" "[2, 3, 2]" *)
+  Vector_matrix_explanation.explain (Document.body G.document) "[3]" "[3, 4]"
 
 let isometric () =
   let tensor_type = Tensor_type.[ Elem.Variable "a"; Elem.Concrete 1 ] in
