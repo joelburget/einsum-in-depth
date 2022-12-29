@@ -9,17 +9,14 @@ let set_children, input, prop, as_target, div, txt', table, tbody, td, tr =
 let process_type_input str =
   str |> Lexing.from_string |> Type_parser.lax Type_lexer.token
 
-module Parse_result = struct
-  type t = Ok of Tensor_type.t * Tensor_type.bracketed | Error of string
-end
-
 let parse str =
   try
     Fmt.pr "attempting to parse %S\n" str;
     let ty, bracketed = process_type_input str in
-    Parse_result.Ok (ty, bracketed)
+    Ok (ty, bracketed)
   with
   | Type_lexer.Eof ->
+      (* TODO: handle empty case with more explanation or fail *)
       if str = "" then Ok ([], Unbracketed)
       else Error "Unknown error (unclosed bracket?)"
   | Type_lexer.Error msg -> Error msg
@@ -117,13 +114,13 @@ let update_output : (string * string) signal -> El.t list signal =
             div [ txt' "Error parsing B: "; txt' msg2 ];
           ])
 
-let explain container a_init b_init =
-  let a_input = input ~at:[ At.value (Jstr.of_string a_init) ] () in
-  let b_input = input ~at:[ At.value (Jstr.of_string b_init) ] () in
+let explain container a_type_str b_type_str =
+  let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
+  let b_input = input ~at:[ At.value (Jstr.of_string b_type_str) ] () in
   let result_output = div [] in
 
-  let a_signal, set_a = S.create a_init in
-  let b_signal, set_b = S.create b_init in
+  let a_signal, set_a = S.create a_type_str in
+  let b_signal, set_b = S.create b_type_str in
 
   Evr.endless_listen (as_target a_input) Ev.change (fun _evt ->
       set_a (Jstr.to_string (prop El.Prop.value a_input)));
@@ -137,5 +134,5 @@ let explain container a_init b_init =
     [
       div [ txt' "A: "; a_input ];
       div [ txt' "B: "; b_input ];
-      div [ txt' "Result: "; result_output ];
+      div [ result_output ];
     ]
