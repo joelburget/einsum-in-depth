@@ -32,6 +32,7 @@ let combine : Tensor_type.Elem.t -> Tensor_type.Elem.t -> Tensor_type.Elem.t =
 
 let replicate n item = List.init n (fun _ -> item)
 let pad n x xs = replicate (n - List.length xs) x @ xs
+let txt_td str = td [ txt' str ]
 
 let explain : Tensor_type.t -> Tensor_type.t -> El.t list =
  fun xs ys ->
@@ -42,18 +43,18 @@ let explain : Tensor_type.t -> Tensor_type.t -> El.t list =
     List.combine padded_xs padded_ys |> List.map (fun (x, y) -> max x y)
   in
 
-  let td_of_item elem = td [ txt' (Tensor_type.Elem.to_string elem) ] in
-
   let mk_align_row len items =
-    let items = List.map td_of_item items in
-    tr (pad len (td [ txt' "" ]) items)
+    items
+    |> List.map Tensor_type.Elem.to_string
+    |> pad len "" |> List.map txt_td |> tr
   in
 
-  let mk_row items = items |> List.map td_of_item |> tr in
+  let mk_row items =
+    items |> List.map Tensor_type.Elem.to_string |> List.map txt_td |> tr
+  in
 
   [
     div [ txt' "First we align the two tensor types, starting from the right." ];
-    (* TODO: remove 1s *)
     table [ tbody [ mk_align_row max_len xs; mk_align_row max_len ys ] ];
     div
       [
