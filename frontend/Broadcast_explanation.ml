@@ -53,31 +53,47 @@ let explain : Tensor_type.t -> Tensor_type.t -> El.t list =
     items |> List.map Tensor_type.Elem.to_string |> List.map txt_td |> tr
   in
 
-  [
-    div [ txt' "First we align the two tensor types, starting from the right." ];
-    table [ tbody [ mk_align_row max_len xs; mk_align_row max_len ys ] ];
-    div
+  let unequal_info =
+    if List.length xs = List.length ys then []
+    else
       [
-        txt'
-          "Because the number of dimensions is not equal, prepend 1s to the \
-           front of the tensor with fewer dimensions to make them the same \
-           length.";
-      ];
-    table [ tbody [ mk_row padded_xs; mk_row padded_ys ] ];
-    div
+        div
+          [
+            txt'
+              "Because the number of dimensions is not equal, prepend 1s to \
+               the front of the tensor with fewer dimensions to make them the \
+               same length.";
+          ];
+        table [ tbody [ mk_row padded_xs; mk_row padded_ys ] ];
+      ]
+  in
+
+  List.concat
+    [
       [
-        txt'
-          "Check that in each position, the tensor sizes are equal, or one of \
-           them is 1.";
+        div
+          [
+            txt' "First we align the two tensor types, starting from the right.";
+          ];
+        table [ tbody [ mk_align_row max_len xs; mk_align_row max_len ys ] ];
       ];
-    div
+      unequal_info;
       [
-        txt'
-          "Finally, take the maximum of each pair of sizes. The other size is \
-           either the same or 1, in which case it will be stretched.";
+        div
+          [
+            txt'
+              "Check that in each position, the tensor sizes are equal, or one \
+               of them is 1.";
+          ];
+        div
+          [
+            txt'
+              "Finally, take the maximum of each pair of sizes. The other size \
+               is either the same or 1, in which case it will be stretched.";
+          ];
+        table [ tbody [ mk_row unified ] ];
       ];
-    table [ tbody [ mk_row unified ] ];
-  ]
+    ]
 
 let update_output : (string * string) signal -> El.t list signal =
   S.map (fun (a, b) ->
