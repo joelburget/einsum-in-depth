@@ -5,40 +5,22 @@ open Note
 open Frontend_util
 open Util
 
-let set_children, input, prop, as_target, div, txt', table, tbody, td, tr =
-  El.(set_children, input, prop, as_target, div, txt', table, tbody, td, tr)
+type parse_result =
+  | Error of string option * string option
+  | Ok of El.t list * Tensor_type.bracketed * Tensor_type.bracketed
 
-let combine : Tensor_type.Elem.t -> Tensor_type.Elem.t -> Tensor_type.Elem.t =
- fun x y ->
-  match (x, y) with
-  | Concrete x, Concrete y -> Concrete (max x y)
-  | Variable x, Concrete 1 | Concrete 1, Variable x -> Variable x
-  | Variable _, Concrete c | Concrete c, Variable _ -> Concrete c
-  | Variable x, Variable y ->
-      if x = y then Variable x
-      else Fmt.failwith "Two different variables (%s, %s)!" x y
-
-let explain' :
-    Tensor_type.t ->
-    Tensor_type.bracketed ->
-    Tensor_type.t ->
-    Tensor_type.bracketed ->
-    El.t list =
- fun xs _xs_bracketed ys _ys_bracketed ->
+let explain_broadcast : int list -> int list -> El.t list =
+ fun xs ys ->
   let max_len = max (List.length xs) (List.length ys) in
-  let padded_xs = pad max_len Tensor_type.Elem.one xs in
-  let padded_ys = pad max_len Tensor_type.Elem.one ys in
+  let padded_xs = pad max_len 1 xs in
+  let padded_ys = pad max_len 1 ys in
   let unified = List.map2 max padded_xs padded_ys in
 
   let mk_align_row len items =
-    items
-    |> List.map Tensor_type.Elem.to_string
-    |> pad len "" |> List.map txt_td |> tr
+    items |> List.map Int.to_string |> pad len "" |> List.map txt_td |> tr
   in
 
-  let mk_row items =
-    items |> List.map Tensor_type.Elem.to_string |> List.map txt_td |> tr
-  in
+  let mk_row items = items |> List.map Int.to_string |> List.map txt_td |> tr in
 
   let unequal_info =
     if List.length xs = List.length ys then []
@@ -82,18 +64,14 @@ let explain' :
       ];
     ]
 
-let update_output : (string * string) signal -> El.t list signal =
+let update_output : (string * string) signal -> parse_result signal =
   S.map (fun (a, b) ->
       match (parse_type a, parse_type b) with
       | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
-          explain' a a_bracketed b b_bracketed
-      | Error msg, Ok _ -> [ txt' "Error parsing A: "; txt' msg ]
-      | Ok _, Error msg -> [ txt' "Error parsing B: "; txt' msg ]
-      | Error msg1, Error msg2 ->
-          [
-            div [ txt' "Error parsing A: "; txt' msg1 ];
-            div [ txt' "Error parsing B: "; txt' msg2 ];
-          ])
+          Ok (explain_broadcast a b, a_bracketed, b_bracketed)
+      | Error msg, Ok _ -> Error (Some msg, None)
+      | Ok _, Error msg -> Error (None, Some msg)
+      | Error msg1, Error msg2 -> Error (Some msg1, Some msg2))
 
 let explain container a_type_str b_type_str =
   let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
@@ -102,18 +80,30 @@ let explain container a_type_str b_type_str =
 
   let a_signal, set_a = S.create a_type_str in
   let b_signal, set_b = S.create b_type_str in
+  let a_bracket_signal, set_a_bracket = S.create Tensor_type.Unbracketed in
+  let b_bracket_signal, set_b_bracket = S.create Tensor_type.Unbracketed in
+  let output_signal = S.Pair.v a_signal b_signal |> update_output in
+  let result_signal, set_result = S.create [] in
 
   Evr.endless_listen (as_target a_input) Ev.change (fun _evt ->
       set_a (Jstr.to_string (prop El.Prop.value a_input)));
   Evr.endless_listen (as_target b_input) Ev.change (fun _evt ->
       set_b (Jstr.to_string (prop El.Prop.value b_input)));
 
-  let output_signal = S.Pair.v a_signal b_signal |> update_output in
-  Elr.def_children result_output output_signal;
+  let output_logger =
+    S.log output_signal (function
+      | Ok (elems, a_bracketed, b_bracketed) ->
+          set_result elems;
+          set_a_bracket a_bracketed;
+          set_b_bracket b_bracketed
+      | Error _ -> ())
+  in
+  Logr.hold output_logger;
 
+  Elr.def_children result_output result_signal;
   set_children container
     [
-      div [ txt' "A: "; a_input ];
-      div [ txt' "B: "; b_input ];
+      div [ txt' "A: "; bracketed_input a_bracket_signal a_input ];
+      div [ txt' "B: "; bracketed_input b_bracket_signal b_input ];
       div [ result_output ];
     ]
