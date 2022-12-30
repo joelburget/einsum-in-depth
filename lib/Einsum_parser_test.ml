@@ -1,18 +1,17 @@
-type 'a parser = (Lexing.lexbuf -> Einsum_parser.token) -> Lexing.lexbuf -> 'a
+type 'a parser = Lexing.position -> 'a Einsum_parser_runner.I.checkpoint
 
 let parse : type a. a Fmt.t -> a parser -> string -> unit =
  fun pp parser str ->
-  try
-    let lexbuf = Lexing.from_string (str ^ "\n") in
-    while true do
-      parser Einsum_lexer.token lexbuf |> Fmt.pr "%a@." pp
-    done
-  with Einsum_lexer.Eof -> ()
+  match Einsum_parser_runner.parse parser (str ^ "\n") with
+  | Ok v -> Fmt.(pr "%a@." pp) v
+  | Error (location, indication, message) ->
+      Fmt.pr "%s%s%s@." location indication message
 
 let parse_rewrite : string -> unit =
-  parse Einops.Rewrite.pp Einsum_parser.rewrite
+  parse Einops.Rewrite.pp Einsum_parser.Incremental.rewrite
 
-let parse_atom : string -> unit = parse Einops.Atom.pp Einsum_parser.atom_top
+let parse_atom : string -> unit =
+  parse Einops.Atom.pp Einsum_parser.Incremental.atom_top
 
 let%expect_test "Atoms" =
   parse_atom "a";
@@ -34,3 +33,16 @@ let%expect_test "Rewrites" =
     a -> a
     () -> ...
     ... (a b) () -> a b |}]
+
+let%expect_test "Errors" =
+  parse_atom ")";
+  parse_rewrite "(";
+  [%expect
+    {|
+    File "", line 1, characters 0-1:
+    Syntax error before ')'.
+    Unexpected token.
+
+    File "", line 1, characters 1-2:
+    Syntax error after '(' and before ' '.
+    After "(", expected a list of variable names. |}]
