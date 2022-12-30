@@ -21,13 +21,6 @@ let parse_types : (string * string * string) signal -> parse_result signal =
               collect_parse_errors b,
               collect_parse_errors c ))
 
-module S_triple = struct
-  let fst ?eq s = S.map ?eq (fun (a, _, _) -> a) s
-  let snd ?eq s = S.map ?eq (fun (_, b, _) -> b) s
-  let trd ?eq s = S.map ?eq (fun (_, _, c) -> c) s
-  let v s0 s1 s2 = S.l3 (fun a b c -> (a, b, c)) s0 s1 s2
-end
-
 let explain container a_type_str b_type_str contraction_str =
   let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
   let b_input = input ~at:[ At.value (Jstr.of_string b_type_str) ] () in

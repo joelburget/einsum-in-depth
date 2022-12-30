@@ -73,3 +73,10 @@ let render_mat items =
   items
   |> List.map (fun items -> items |> List.map Int.to_string |> List.map txt_td)
   |> List.map tr |> tbody
+
+module S_triple = struct
+  let fst ?eq s = S.map ?eq (fun (a, _, _) -> a) s
+  let snd ?eq s = S.map ?eq (fun (_, b, _) -> b) s
+  let trd ?eq s = S.map ?eq (fun (_, _, c) -> c) s
+  let v s0 s1 s2 = S.l3 (fun a b c -> (a, b, c)) s0 s1 s2
+end
