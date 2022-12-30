@@ -6,7 +6,7 @@ open Frontend_util
 open Util
 
 type parse_result =
-  | Error of string option * string option
+  | Error of string list * string list
   | Ok of El.t list * Tensor_type.bracketed * Tensor_type.bracketed
 
 let explain_broadcast : int list -> int list -> El.t list =
@@ -69,14 +69,17 @@ let update_output : (string * string) signal -> parse_result signal =
       match (parse_type a, parse_type b) with
       | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
           Ok (explain_broadcast a b, a_bracketed, b_bracketed)
-      | Error msg, Ok _ -> Error (Some msg, None)
-      | Ok _, Error msg -> Error (None, Some msg)
-      | Error msg1, Error msg2 -> Error (Some msg1, Some msg2))
+      | Error (msg1, msg2), Ok _ -> Error ([ msg1; msg2 ], [])
+      | Ok _, Error (msg1, msg2) -> Error ([], [ msg1; msg2 ])
+      | Error (msg1, msg2), Error (msg3, msg4) ->
+          Error ([ msg1; msg2 ], [ msg3; msg4 ]))
 
 let explain container a_type_str b_type_str =
   let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
   let b_input = input ~at:[ At.value (Jstr.of_string b_type_str) ] () in
   let result_output = div [] in
+  let a_parse_error = div [] in
+  let b_parse_error = div [] in
 
   let a_signal, set_a = S.create a_type_str in
   let b_signal, set_b = S.create b_type_str in
@@ -84,6 +87,8 @@ let explain container a_type_str b_type_str =
   let b_bracket_signal, set_b_bracket = S.create Tensor_type.Unbracketed in
   let output_signal = S.Pair.v a_signal b_signal |> update_output in
   let result_signal, set_result = S.create [] in
+  let a_parse_error_signal, set_a_parse_error = S.create [] in
+  let b_parse_error_signal, set_b_parse_error = S.create [] in
 
   Evr.endless_listen (as_target a_input) Ev.change (fun _evt ->
       set_a (Jstr.to_string (prop El.Prop.value a_input)));
@@ -95,15 +100,23 @@ let explain container a_type_str b_type_str =
       | Ok (elems, a_bracketed, b_bracketed) ->
           set_result elems;
           set_a_bracket a_bracketed;
-          set_b_bracket b_bracketed
-      | Error _ -> ())
+          set_b_bracket b_bracketed;
+          set_a_parse_error [];
+          set_b_parse_error []
+      | Error (a_msgs, b_msgs) ->
+          set_a_parse_error (List.map txt' a_msgs);
+          set_b_parse_error (List.map txt' b_msgs))
   in
   Logr.hold output_logger;
 
   Elr.def_children result_output result_signal;
+  Elr.def_children a_parse_error a_parse_error_signal;
+  Elr.def_children b_parse_error b_parse_error_signal;
   set_children container
     [
-      div [ txt' "A: "; bracketed_input a_bracket_signal a_input ];
-      div [ txt' "B: "; bracketed_input b_bracket_signal b_input ];
+      div
+        [ txt' "A: "; bracketed_input a_bracket_signal a_input; a_parse_error ];
+      div
+        [ txt' "B: "; bracketed_input b_bracket_signal b_input; b_parse_error ];
       div [ result_output ];
     ]

@@ -5,7 +5,7 @@ open Isometric
 let render_tensor_type = Frontend_util.fmt_txt "%a" Tensor_type.pp
 
 let () =
-  (* Broadcast_explanation.explain (Document.body G.document) "[1, 2]" "[2, 3, 2]" *)
+  (* Broadcast_explanation.explain (Document.body G.document) "1, 2" "2, 3, 2" *)
   Vector_matrix_explanation.explain (Document.body G.document) "3" "3, 4"
 
 let isometric () =

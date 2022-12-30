@@ -1,0 +1,113 @@
+bracketed: RBRACKET
+##
+## Ends in an error in state: 0.
+##
+## bracketed' -> . bracketed [ # ]
+##
+## The known suffix of the stack is as follows:
+##
+##
+
+Unexpected "]"
+
+bracketed: LBRACKET LBRACKET
+##
+## Ends in an error in state: 1.
+##
+## bracketed -> LBRACKET . unbracketed_ RBRACKET [ # ]
+##
+## The known suffix of the stack is as follows:
+## LBRACKET
+##
+
+Expected a list after "["
+
+bracketed: LBRACKET NUM EOF
+##
+## Ends in an error in state: 3.
+##
+## bracketed -> LBRACKET unbracketed_ . RBRACKET [ # ]
+##
+## The known suffix of the stack is as follows:
+## LBRACKET unbracketed_
+##
+## WARNING: This example involves spurious reductions.
+## This implies that, although the LR(1) items shown above provide an
+## accurate view of the past (what has been recognized so far), they
+## may provide an INCOMPLETE view of the future (what was expected next).
+## In state 7, spurious reduction of production separated_nonempty_list(COMMA,item) -> item
+## In state 5, spurious reduction of production loption(separated_nonempty_list(COMMA,item)) -> separated_nonempty_list(COMMA,item)
+## In state 6, spurious reduction of production unbracketed_ -> loption(separated_nonempty_list(COMMA,item))
+##
+
+Expected "]" after list elements
+
+lax: NUM NUM
+##
+## Ends in an error in state: 7.
+##
+## separated_nonempty_list(COMMA,item) -> item . [ RBRACKET EOF ]
+## separated_nonempty_list(COMMA,item) -> item . COMMA separated_nonempty_list(COMMA,item) [ RBRACKET EOF ]
+##
+## The known suffix of the stack is as follows:
+## item
+##
+
+Expected "," or "]" after list element
+
+lax: NUM COMMA RBRACKET
+##
+## Ends in an error in state: 8.
+##
+## separated_nonempty_list(COMMA,item) -> item COMMA . separated_nonempty_list(COMMA,item) [ RBRACKET EOF ]
+##
+## The known suffix of the stack is as follows:
+## item COMMA
+##
+
+Expected list element after ","
+
+lax: RBRACKET
+##
+## Ends in an error in state: 11.
+##
+## lax' -> . lax [ # ]
+##
+## The known suffix of the stack is as follows:
+##
+##
+
+Expected a bracketed or unbracketed list
+
+lax: NUM RBRACKET
+##
+## Ends in an error in state: 12.
+##
+## unbracketed -> unbracketed_ . EOF [ # ]
+##
+## The known suffix of the stack is as follows:
+## unbracketed_
+##
+## WARNING: This example involves spurious reductions.
+## This implies that, although the LR(1) items shown above provide an
+## accurate view of the past (what has been recognized so far), they
+## may provide an INCOMPLETE view of the future (what was expected next).
+## In state 7, spurious reduction of production separated_nonempty_list(COMMA,item) -> item
+## In state 5, spurious reduction of production loption(separated_nonempty_list(COMMA,item)) -> separated_nonempty_list(COMMA,item)
+## In state 6, spurious reduction of production unbracketed_ -> loption(separated_nonempty_list(COMMA,item))
+##
+
+Expected a bracketed or unbracketed list
+
+unbracketed: RBRACKET
+##
+## Ends in an error in state: 17.
+##
+## unbracketed' -> . unbracketed [ # ]
+##
+## The known suffix of the stack is as follows:
+##
+##
+
+Expected a bracketed or unbracketed list
+

@@ -3,7 +3,7 @@
  (inline_tests)
  (preprocess
   (pps ppx_expect))
- (libraries fmt))
+ (libraries fmt menhirLib))
 
 (menhir
  (modules Einsum_parser))
@@ -12,7 +12,8 @@
  (modules Einsum_lexer))
 
 (menhir
- (modules Type_parser))
+ (modules Type_parser)
+ (flags --table))
 
 (ocamllex
  (modules Type_lexer))
