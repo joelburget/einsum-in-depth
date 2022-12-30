@@ -4,27 +4,33 @@
 %}
 
 %token <string> STR
-%token ARROW ELLIPSIS
+%token ARROW ELLIPSIS COMMA
 %token LPAREN RPAREN
-%token EOL
+%token EOF
 
 (* %nonassoc ARROW *)
 
 %start <Einops.Rewrite.t> rewrite
 %start <Einops.Atom.t>    atom_top
+%start <Einops.Group.t>   group_top
 
 %%
 
-rewrite:
-| left = atom+ ARROW right = atom+ EOL
-  { left, right }
-
-atom_top: atom = atom EOL { atom }
+atom_top: atom = atom EOF { atom }
+group_top: group = group EOF { group }
 
 atom:
 | name = STR
   { Name name }
 | LPAREN names = STR* RPAREN
-  { Group names }
+  { Parenthesized names }
 | ELLIPSIS
   { Ellipsis }
+
+group:
+| group = atom+
+  { group }
+
+rewrite:
+| bindings = separated_nonempty_list(COMMA, group) ARROW rhs = atom+ EOF
+  { bindings, rhs }

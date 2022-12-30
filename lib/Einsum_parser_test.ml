@@ -2,7 +2,7 @@ type 'a parser = Lexing.position -> 'a Einsum_parser_runner.I.checkpoint
 
 let parse : type a. a Fmt.t -> a parser -> string -> unit =
  fun pp parser str ->
-  match Einsum_parser_runner.parse parser (str ^ "\n") with
+  match Einsum_parser_runner.parse parser str with
   | Ok v -> Fmt.(pr "%a@." pp) v
   | Error (location, indication, message) ->
       Fmt.pr "%s%s%s@." location indication message
@@ -12,6 +12,9 @@ let parse_rewrite : string -> unit =
 
 let parse_atom : string -> unit =
   parse Einops.Atom.pp Einsum_parser.Incremental.atom_top
+
+let parse_group : string -> unit =
+  parse Einops.Group.pp Einsum_parser.Incremental.group_top
 
 let%expect_test "Atoms" =
   parse_atom "a";
@@ -25,14 +28,30 @@ let%expect_test "Atoms" =
     ...
   |}]
 
+let%expect_test "Groups" =
+  parse_group "a b c";
+  parse_group "()";
+  parse_group "(a b c)";
+  parse_group "...";
+  parse_group "a b () (a b) ...";
+  [%expect {|
+    a b c
+    ()
+    (a b c)
+    ...
+    a b () (a b) ...
+  |}]
+
 let%expect_test "Rewrites" =
   parse_rewrite "a -> a";
+  parse_rewrite "i, i j -> j";
   parse_rewrite "() -> ...";
-  parse_rewrite "... (a b) () -> a b";
+  parse_rewrite "..., (a b), () -> a b";
   [%expect {|
     a -> a
+    i, i j -> j
     () -> ...
-    ... (a b) () -> a b |}]
+    ..., (a b), () -> a b |}]
 
 let%expect_test "Errors" =
   parse_atom ")";
@@ -43,6 +62,6 @@ let%expect_test "Errors" =
     Syntax error before ')'.
     Unexpected token.
 
-    File "", line 1, characters 1-2:
-    Syntax error after '(' and before ' '.
+    File "", line 1, characters 1-1:
+    Syntax error after '(' and before ''.
     After "(", expected a list of variable names. |}]

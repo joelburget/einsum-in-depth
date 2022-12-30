@@ -2,7 +2,6 @@
   open Einsum_parser
 
   exception Error of string
-  exception Eof
 }
 
 rule token = parse
@@ -12,15 +11,16 @@ rule token = parse
     { STR str }
 | "->"
     { ARROW }
+| ","
+    { COMMA }
 | "..."
     { ELLIPSIS }
 | '('
     { LPAREN }
 | ')'
     { RPAREN }
-| '\n' { EOL }
 | eof
-    { raise Eof }
+    { EOF }
 | _
     { raise (Error (Printf.sprintf "At offset %d: unexpected character.\n" (Lexing.lexeme_start lexbuf))) }
 

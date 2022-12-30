@@ -14,7 +14,7 @@ atom_top: LPAREN LPAREN
 ##
 ## Ends in an error in state: 2.
 ##
-## atom -> LPAREN . list(STR) RPAREN [ STR LPAREN EOL ELLIPSIS ARROW ]
+## atom -> LPAREN . list(STR) RPAREN [ STR LPAREN EOF ELLIPSIS COMMA ARROW ]
 ##
 ## The known suffix of the stack is as follows:
 ## LPAREN
@@ -38,17 +38,60 @@ atom_top: ELLIPSIS STR
 ##
 ## Ends in an error in state: 9.
 ##
-## atom_top -> atom . EOL [ # ]
+## atom_top -> atom . EOF [ # ]
 ##
 ## The known suffix of the stack is as follows:
 ## atom
 ##
 
+Unexpected token after an atom.
+
+group_top: RPAREN
+##
+## Ends in an error in state: 11.
+##
+## group_top' -> . group_top [ # ]
+##
+## The known suffix of the stack is as follows:
+##
+##
+
 Unexpected token.
+
+group_top: ELLIPSIS STR
+##
+## Ends in an error in state: 14.
+##
+## group_top -> group . EOF [ # ]
+##
+## The known suffix of the stack is as follows:
+## group
+##
+## WARNING: This example involves spurious reductions.
+## This implies that, although the LR(1) items shown above provide an
+## accurate view of the past (what has been recognized so far), they
+## may provide an INCOMPLETE view of the future (what was expected next).
+## In state 16, spurious reduction of production separated_nonempty_list(COMMA,atom) -> atom
+## In state 12, spurious reduction of production group -> separated_nonempty_list(COMMA,atom)
+##
+
+Unexpected token after an atom.
+
+group_top: ELLIPSIS COMMA RPAREN
+##
+## Ends in an error in state: 17.
+##
+## separated_nonempty_list(COMMA,atom) -> atom COMMA . separated_nonempty_list(COMMA,atom) [ STR LPAREN EOF ELLIPSIS ARROW ]
+##
+## The known suffix of the stack is as follows:
+## atom COMMA
+##
+
+Unexpected token after a comma.
 
 rewrite: RPAREN
 ##
-## Ends in an error in state: 11.
+## Ends in an error in state: 19.
 ##
 ## rewrite' -> . rewrite [ # ]
 ##
@@ -58,64 +101,61 @@ rewrite: RPAREN
 
 Unexpected token.
 
-rewrite: ELLIPSIS EOL
+rewrite: ELLIPSIS EOF
 ##
-## Ends in an error in state: 13.
+## Ends in an error in state: 27.
 ##
-## rewrite -> nonempty_list(atom) . ARROW nonempty_list(atom) EOL [ # ]
+## nonempty_list(group) -> group . [ ARROW ]
+## nonempty_list(group) -> group . nonempty_list(group) [ ARROW ]
 ##
 ## The known suffix of the stack is as follows:
-## nonempty_list(atom)
+## group
 ##
 ## WARNING: This example involves spurious reductions.
 ## This implies that, although the LR(1) items shown above provide an
 ## accurate view of the past (what has been recognized so far), they
 ## may provide an INCOMPLETE view of the future (what was expected next).
-## In state 17, spurious reduction of production nonempty_list(atom) -> atom
+## In state 16, spurious reduction of production separated_nonempty_list(COMMA,atom) -> atom
+## In state 12, spurious reduction of production group -> separated_nonempty_list(COMMA,atom)
 ##
 
 Unexpected token.
 
 rewrite: ELLIPSIS ARROW RPAREN
 ##
-## Ends in an error in state: 14.
+## Ends in an error in state: 22.
 ##
-## rewrite -> nonempty_list(atom) ARROW . nonempty_list(atom) EOL [ # ]
+## rewrite -> nonempty_list(group) ARROW . nonempty_list(atom) EOF [ # ]
 ##
 ## The known suffix of the stack is as follows:
-## nonempty_list(atom) ARROW
+## nonempty_list(group) ARROW
 ##
 
-Expected a list of variable names after "->".
+Unexpected token after "->".
 
 rewrite: ELLIPSIS ARROW ELLIPSIS ARROW
 ##
-## Ends in an error in state: 15.
+## Ends in an error in state: 25.
 ##
-## rewrite -> nonempty_list(atom) ARROW nonempty_list(atom) . EOL [ # ]
-##
-## The known suffix of the stack is as follows:
-## nonempty_list(atom) ARROW nonempty_list(atom)
-##
-## WARNING: This example involves spurious reductions.
-## This implies that, although the LR(1) items shown above provide an
-## accurate view of the past (what has been recognized so far), they
-## may provide an INCOMPLETE view of the future (what was expected next).
-## In state 17, spurious reduction of production nonempty_list(atom) -> atom
-##
-
-Unexpected token.
-
-rewrite: ELLIPSIS RPAREN
-##
-## Ends in an error in state: 17.
-##
-## nonempty_list(atom) -> atom . [ EOL ARROW ]
-## nonempty_list(atom) -> atom . nonempty_list(atom) [ EOL ARROW ]
+## nonempty_list(atom) -> atom . [ EOF ]
+## nonempty_list(atom) -> atom . nonempty_list(atom) [ EOF ]
 ##
 ## The known suffix of the stack is as follows:
 ## atom
 ##
 
-Unexpected token.
+Unexpected token after an atom.
+
+rewrite: ELLIPSIS RPAREN
+##
+## Ends in an error in state: 16.
+##
+## separated_nonempty_list(COMMA,atom) -> atom . [ STR LPAREN EOF ELLIPSIS ARROW ]
+## separated_nonempty_list(COMMA,atom) -> atom . COMMA separated_nonempty_list(COMMA,atom) [ STR LPAREN EOF ELLIPSIS ARROW ]
+##
+## The known suffix of the stack is as follows:
+## atom
+##
+
+Unexpected token after an atom.
 
