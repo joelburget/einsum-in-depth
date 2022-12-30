@@ -22,11 +22,6 @@ end
 type t = Elem.t list
 
 let pp = Fmt.brackets (Fmt.list ~sep:Fmt.comma Elem.pp)
-
-let to_string elems =
-  let inside = elems |> List.map Elem.to_string |> Util.join ~sep:"; " in
-  "[" ^ inside ^ "]"
-
 let is_concrete elems = elems |> List.for_all Elem.is_concrete
 
 module StringSet = Set.Make (String)

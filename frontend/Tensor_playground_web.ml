@@ -2,7 +2,7 @@ open Brr
 open Tensor_playground
 open Isometric
 
-let render_tensor_type t = El.txt' (Tensor_type.to_string t)
+let render_tensor_type = Frontend_util.fmt_txt "%a" Tensor_type.pp
 
 let () =
   (* Broadcast_explanation.explain (Document.body G.document) "[1, 2]" "[2, 3, 2]" *)

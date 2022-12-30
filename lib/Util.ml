@@ -1,8 +1,3 @@
-let rec join ?(sep = "") = function
-  | [] -> ""
-  | [ x ] -> x
-  | x :: xs -> x ^ sep ^ join ~sep xs
-
 let replicate n item = List.init n (fun _ -> item)
 let pad n x xs = replicate (n - List.length xs) x @ xs
 let sum = List.fold_left ( + ) 0

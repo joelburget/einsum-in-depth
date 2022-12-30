@@ -27,8 +27,6 @@ module Fusion_step = struct
     | Matmul (t1, t2, t3) ->
         Fmt.(pf ppf "Matmul %a" (parens (list ~sep:comma int)) [ t1; t2; t3 ])
     | Dot_product -> Fmt.pf ppf "Dot_product"
-
-  let to_string = Fmt.to_to_string pp
 end
 
 module Fusion_result = struct
@@ -90,9 +88,7 @@ module Matmul : Op = struct
   let%expect_test "last_two'" =
     let go xs =
       let xs, x1, x2 = last_two' xs in
-      let xs = xs |> List.map Int.to_string |> Util.join ~sep:"; " in
-      print_endline
-        ("([" ^ xs ^ "], " ^ Int.to_string x1 ^ ", " ^ Int.to_string x2 ^ ")")
+      Fmt.pr "@[([%a], %d, %d)@]" Fmt.(list ~sep:semi int) xs x1 x2
     in
     go [ 1; 2; 3; 4; 5 ];
     [%expect {| ([3; 2; 1], 4, 5) |}]
