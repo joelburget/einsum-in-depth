@@ -5,26 +5,13 @@ open Note
 open Tensor_playground
 open Util
 
-let set_children, input, prop, as_target, div, txt', table, tbody, td, tr, p =
-  El.(set_children, input, prop, as_target, div, txt', table, tbody, td, tr, p)
-
-type direction = Horizontal | Vertical
-
-let render_vec ~direction items =
-  match direction with
-  | Horizontal ->
-      tbody [ items |> List.map Int.to_string |> List.map txt_td |> tr ]
-  | Vertical ->
-      items |> List.map (fun i -> tr [ txt_td (Int.to_string i) ]) |> tbody
-
-let render_mat items =
-  items
-  |> List.map (fun items -> items |> List.map Int.to_string |> List.map txt_td)
-  |> List.map tr |> tbody
+type parse_result =
+  | Error of string option * string option
+  | Ok of El.t list * Tensor_type.bracketed * Tensor_type.bracketed
 
 let combine_mat m1 m2 = List.map2 (List.map2 ( * )) m1 m2
 
-let explain' : int -> int -> El.t list =
+let explain_vec_mat : int -> int -> El.t list =
  fun d0 d1 ->
   let v_elems = List.init d0 (fun i -> i) in
   let m_elems = List.init d0 (fun i -> List.init d1 (fun j -> (i * d1) + j)) in
@@ -78,44 +65,44 @@ let explain' : int -> int -> El.t list =
       ];
   ]
 
-let update_output : (string * string) signal -> El.t list signal =
+let update_output : (string * string) signal -> parse_result signal =
   S.map (fun (a, b) ->
       match (parse_type a, parse_type b) with
-      | Ok (a, _a_bracketed), Ok (b, _b_bracketed) -> (
-          match (a, b) with
-          | [ a ], [ b0; b1 ] ->
-              if a > 15 || b1 > 15 then
-                [
-                  p
-                    [
-                      fmt_txt
-                        "Sorry, I can't handle dimensions that large (%i)."
-                        (max a b1);
-                    ];
-                ]
-              else if a = b0 then explain' a b1
-              else
+      | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
+          let elems =
+            match (a, b) with
+            | [ a ], [ b0; b1 ] ->
+                if a > 15 || b1 > 15 then
+                  [
+                    p
+                      [
+                        fmt_txt
+                          "Sorry, I can't handle dimensions that large (%i)."
+                          (max a b1);
+                      ];
+                  ]
+                else if a = b0 then explain_vec_mat a b1
+                else
+                  [
+                    fmt_txt
+                      "A and the first dimension of B must match (got %a and \
+                       %a)"
+                      Fmt.int a Fmt.int b0;
+                  ]
+            | _ ->
                 [
                   fmt_txt
-                    "A and the first dimension of B must match (got %a and %a)"
-                    Fmt.int a Fmt.int b0;
+                    "A must have rank 1 and B must have rank 2 (got %a and %a)"
+                    Fmt.(list int)
+                    a
+                    Fmt.(list int)
+                    b;
                 ]
-          | _ ->
-              [
-                fmt_txt
-                  "A must have rank 1 and B must have rank 2 (got %a and %a)"
-                  Fmt.(list int)
-                  a
-                  Fmt.(list int)
-                  b;
-              ])
-      | Error msg, Ok _ -> [ txt' "Error parsing A: "; txt' msg ]
-      | Ok _, Error msg -> [ txt' "Error parsing B: "; txt' msg ]
-      | Error msg1, Error msg2 ->
-          [
-            div [ txt' "Error parsing A: "; txt' msg1 ];
-            div [ txt' "Error parsing B: "; txt' msg2 ];
-          ])
+          in
+          Ok (elems, a_bracketed, b_bracketed)
+      | Error msg, Ok _ -> Error (Some msg, None)
+      | Ok _, Error msg -> Error (None, Some msg)
+      | Error msg1, Error msg2 -> Error (Some msg1, Some msg2))
 
 let explain container a_type_str b_type_str =
   let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
@@ -124,18 +111,30 @@ let explain container a_type_str b_type_str =
 
   let a_signal, set_a = S.create a_type_str in
   let b_signal, set_b = S.create b_type_str in
+  let a_bracket_signal, set_a_bracket = S.create Tensor_type.Unbracketed in
+  let b_bracket_signal, set_b_bracket = S.create Tensor_type.Unbracketed in
+  let output_signal = S.Pair.v a_signal b_signal |> update_output in
+  let result_signal, set_result = S.create [] in
 
   Evr.endless_listen (as_target a_input) Ev.change (fun _evt ->
       set_a (Jstr.to_string (prop El.Prop.value a_input)));
   Evr.endless_listen (as_target b_input) Ev.change (fun _evt ->
       set_b (Jstr.to_string (prop El.Prop.value b_input)));
 
-  let output_signal = S.Pair.v a_signal b_signal |> update_output in
-  Elr.def_children result_output output_signal;
+  let output_logger =
+    S.log output_signal (function
+      | Ok (elems, a_bracketed, b_bracketed) ->
+          set_result elems;
+          set_a_bracket a_bracketed;
+          set_b_bracket b_bracketed
+      | Error _ -> ())
+  in
+  Logr.hold output_logger;
 
+  Elr.def_children result_output result_signal;
   set_children container
     [
-      div [ txt' "A: "; a_input ];
-      div [ txt' "B: "; b_input ];
-      div [ result_output ];
+      div [ txt' "A: "; bracketed_input a_bracket_signal a_input ];
+      div [ txt' "B: "; bracketed_input b_bracket_signal b_input ];
+      result_output;
     ]

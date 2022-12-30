@@ -1,7 +1,15 @@
 open Tensor_playground
+open Brr
+open Brr_note
+open Note
 
-let txt_td str = Brr.El.(td [ txt' str ])
-let class_ str = Brr.At.(class' (Jstr.of_string str))
+type direction = Horizontal | Vertical
+
+let set_children, input, prop, as_target, div, txt', table, tbody, td, tr, p =
+  El.(set_children, input, prop, as_target, div, txt', table, tbody, td, tr, p)
+
+let txt_td str = td [ txt' str ]
+let class_ str = At.(class' (Jstr.of_string str))
 
 let parse_type str =
   try
@@ -11,5 +19,28 @@ let parse_type str =
     Ok (ty, bracketed)
   with Type_lexer.Error msg -> Error msg
 
-let fmt_txt : type a. (a, Format.formatter, unit, Brr.El.t) format4 -> a =
- fun fmt -> Fmt.kstr (fun s -> Brr.El.txt' s) fmt
+let fmt_txt : type a. (a, Format.formatter, unit, El.t) format4 -> a =
+ fun fmt -> Fmt.kstr (fun s -> El.txt' s) fmt
+
+let bracketed_input bracketed_s elem =
+  let lbracket = El.span [] in
+  let rbracket = El.span [] in
+  let f str = function
+    | Tensor_type.Unbracketed -> [ El.txt' str ]
+    | Bracketed -> []
+  in
+  Elr.def_children lbracket (S.map (f "[") bracketed_s);
+  Elr.def_children rbracket (S.map (f "]") bracketed_s);
+  El.(span [ lbracket; elem; rbracket ])
+
+let render_vec ~direction items =
+  match direction with
+  | Horizontal ->
+      tbody [ items |> List.map Int.to_string |> List.map txt_td |> tr ]
+  | Vertical ->
+      items |> List.map (fun i -> tr [ txt_td (Int.to_string i) ]) |> tbody
+
+let render_mat items =
+  items
+  |> List.map (fun items -> items |> List.map Int.to_string |> List.map txt_td)
+  |> List.map tr |> tbody
