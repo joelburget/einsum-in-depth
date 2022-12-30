@@ -9,12 +9,7 @@ let parse_type str =
       str |> Lexing.from_string |> Type_parser.lax Type_lexer.token
     in
     Ok (ty, bracketed)
-  with
-  | Type_lexer.Eof ->
-      (* TODO: handle empty case with more explanation or fail *)
-      if str = "" then Ok ([], Unbracketed)
-      else Error "Unknown error (unclosed bracket?)"
-  | Type_lexer.Error msg -> Error msg
+  with Type_lexer.Error msg -> Error msg
 
 let fmt_txt : type a. (a, Format.formatter, unit, Brr.El.t) format4 -> a =
  fun fmt -> Fmt.kstr (fun s -> Brr.El.txt' s) fmt

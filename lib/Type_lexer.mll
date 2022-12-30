@@ -2,23 +2,21 @@
   open Type_parser
 
   exception Error of string
-  exception Eof
 }
 
 rule token = parse
 | [' ' '\t']
-    { token lexbuf }
+  { token lexbuf }
 | ['0'-'9']+ as num
-    { NUM num }
+  { NUM num }
 | ","
-    { COMMA }
+  { COMMA }
 | '['
-    { LBRACKET }
+  { LBRACKET }
 | ']'
-    { RBRACKET }
-(* | '\n' { EOL } *)
+  { RBRACKET }
 | eof
-    { raise Eof }
+  { EOF }
 | _
     { raise (Error (Printf.sprintf "At offset %d: unexpected character.\n" (Lexing.lexeme_start lexbuf))) }
 

@@ -1,6 +1,7 @@
 %token <string> NUM
 %token COMMA
 %token LBRACKET RBRACKET
+%token EOF
 
 %start <int list> bracketed
 %start <int list> unbracketed
@@ -12,11 +13,15 @@ item:
   | n = NUM { int_of_string n }
 
 unbracketed:
+  | items = unbracketed_ EOF
+  { items }
+
+unbracketed_:
   | items = separated_list(COMMA, item)
   { items }
 
 bracketed:
-  | LBRACKET items = unbracketed RBRACKET
+  | LBRACKET items = unbracketed_ RBRACKET
   { items }
 
 lax:

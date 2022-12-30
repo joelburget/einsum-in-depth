@@ -6,8 +6,7 @@
  (libraries fmt))
 
 (menhir
- (modules Einsum_parser)
- (flags --explain --dump))
+ (modules Einsum_parser))
 
 (ocamllex
  (modules Einsum_lexer))
