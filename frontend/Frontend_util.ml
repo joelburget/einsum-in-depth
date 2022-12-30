@@ -5,8 +5,31 @@ open Note
 
 type direction = Horizontal | Vertical
 
-let set_children, input, prop, as_target, div, txt', table, tbody, td, tr, p =
-  El.(set_children, input, prop, as_target, div, txt', table, tbody, td, tr, p)
+let ( code,
+      set_children,
+      input,
+      prop,
+      as_target,
+      div,
+      txt',
+      table,
+      tbody,
+      td,
+      tr,
+      p ) =
+  El.
+    ( code,
+      set_children,
+      input,
+      prop,
+      as_target,
+      div,
+      txt',
+      table,
+      tbody,
+      td,
+      tr,
+      p )
 
 let txt_td str = td [ txt' str ]
 let class_ str = At.(class' (Jstr.of_string str))
@@ -15,6 +38,15 @@ let parse_type str =
   match Type_parser_runner.parse Type_parser.Incremental.lax str with
   | Ok (ty, bracketed) -> Ok (ty, bracketed)
   | Error (_location, indication, message) -> Error (indication, message)
+
+let parse_einsum str =
+  match Einsum_parser_runner.parse Einsum_parser.Incremental.rewrite str with
+  | Ok rewrite -> Ok rewrite
+  | Error (_location, indication, message) -> Error (indication, message)
+
+let collect_parse_errors = function
+  | Result.Ok _ -> []
+  | Error (msg1, msg2) -> [ msg1; msg2 ]
 
 let fmt_txt : type a. (a, Format.formatter, unit, El.t) format4 -> a =
  fun fmt -> Fmt.kstr (fun s -> El.txt' s) fmt

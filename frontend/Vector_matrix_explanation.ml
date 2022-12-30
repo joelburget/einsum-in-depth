@@ -54,18 +54,42 @@ let explain_vec_mat : int -> int -> El.t list =
       [
         tr
           [
-            td [ txt' "Don't sum"; render_mat expanded_result ];
-            td [ txt' "Rows"; render_vec ~direction:Vertical summed_rows ];
+            td
+              [
+                txt' "Don't sum (";
+                code [ txt' "i,ij->ij" ];
+                txt' ")";
+                render_mat expanded_result;
+              ];
+            td
+              [
+                txt' "Rows (";
+                code [ txt' "i,ij->i" ];
+                txt' ")";
+                render_vec ~direction:Vertical summed_rows;
+              ];
           ];
         tr
           [
-            td [ txt' "Columns"; render_vec ~direction:Horizontal summed_cols ];
-            td [ txt' "Both"; txt' (Int.to_string summed) ];
+            td
+              [
+                txt' "Columns (";
+                code [ txt' "i,ij->j" ];
+                txt' ")";
+                render_vec ~direction:Horizontal summed_cols;
+              ];
+            td
+              [
+                txt' "Both (";
+                code [ txt' "i,ij->" ];
+                txt' ")";
+                txt' (Int.to_string summed);
+              ];
           ];
       ];
   ]
 
-let update_output : (string * string) signal -> parse_result signal =
+let parse_types : (string * string) signal -> parse_result signal =
   S.map (fun (a, b) ->
       match (parse_type a, parse_type b) with
       | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
@@ -100,10 +124,7 @@ let update_output : (string * string) signal -> parse_result signal =
                 ]
           in
           Ok (elems, a_bracketed, b_bracketed)
-      | Error (msg1, msg2), Ok _ -> Error ([ msg1; msg2 ], [])
-      | Ok _, Error (msg1, msg2) -> Error ([], [ msg1; msg2 ])
-      | Error (msg1, msg2), Error (msg3, msg4) ->
-          Error ([ msg1; msg2 ], [ msg3; msg4 ]))
+      | a, b -> Error (collect_parse_errors a, collect_parse_errors b))
 
 let explain container a_type_str b_type_str =
   let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
@@ -116,7 +137,7 @@ let explain container a_type_str b_type_str =
   let b_signal, set_b = S.create b_type_str in
   let a_bracket_signal, set_a_bracket = S.create Tensor_type.Unbracketed in
   let b_bracket_signal, set_b_bracket = S.create Tensor_type.Unbracketed in
-  let output_signal = S.Pair.v a_signal b_signal |> update_output in
+  let output_signal = S.Pair.v a_signal b_signal |> parse_types in
   let result_signal, set_result = S.create [] in
   let a_parse_error_signal, set_a_parse_error = S.create [] in
   let b_parse_error_signal, set_b_parse_error = S.create [] in
@@ -145,7 +166,9 @@ let explain container a_type_str b_type_str =
   Elr.def_children b_parse_error b_parse_error_signal;
   set_children container
     [
-      div [ txt' "A: "; bracketed_input a_bracket_signal a_input ];
-      div [ txt' "B: "; bracketed_input b_bracket_signal b_input ];
+      div
+        [ txt' "A: "; bracketed_input a_bracket_signal a_input; a_parse_error ];
+      div
+        [ txt' "B: "; bracketed_input b_bracket_signal b_input; b_parse_error ];
       result_output;
     ]

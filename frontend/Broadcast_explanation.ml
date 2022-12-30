@@ -64,15 +64,12 @@ let explain_broadcast : int list -> int list -> El.t list =
       ];
     ]
 
-let update_output : (string * string) signal -> parse_result signal =
+let parse_types : (string * string) signal -> parse_result signal =
   S.map (fun (a, b) ->
       match (parse_type a, parse_type b) with
       | Ok (a, a_bracketed), Ok (b, b_bracketed) ->
           Ok (explain_broadcast a b, a_bracketed, b_bracketed)
-      | Error (msg1, msg2), Ok _ -> Error ([ msg1; msg2 ], [])
-      | Ok _, Error (msg1, msg2) -> Error ([], [ msg1; msg2 ])
-      | Error (msg1, msg2), Error (msg3, msg4) ->
-          Error ([ msg1; msg2 ], [ msg3; msg4 ]))
+      | a, b -> Error (collect_parse_errors a, collect_parse_errors b))
 
 let explain container a_type_str b_type_str =
   let a_input = input ~at:[ At.value (Jstr.of_string a_type_str) ] () in
@@ -85,7 +82,7 @@ let explain container a_type_str b_type_str =
   let b_signal, set_b = S.create b_type_str in
   let a_bracket_signal, set_a_bracket = S.create Tensor_type.Unbracketed in
   let b_bracket_signal, set_b_bracket = S.create Tensor_type.Unbracketed in
-  let output_signal = S.Pair.v a_signal b_signal |> update_output in
+  let output_signal = S.Pair.v a_signal b_signal |> parse_types in
   let result_signal, set_result = S.create [] in
   let a_parse_error_signal, set_a_parse_error = S.create [] in
   let b_parse_error_signal, set_b_parse_error = S.create [] in
