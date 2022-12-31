@@ -85,34 +85,29 @@ let explain_vec_mat : int -> int -> El.t list =
       ];
   ]
 
-let parse_types' : int list option * int list option -> El.t list = function
-  | Some a_lst, Some b_lst -> (
-      match (a_lst, b_lst) with
-      | [ a ], [ b0; b1 ] ->
-          if a > 15 || b1 > 15 then
-            [
-              p
-                [
-                  fmt_txt "Sorry, I can't handle dimensions that large (%i)."
-                    (max a b1);
-                ];
-            ]
-          else if a = b0 then explain_vec_mat a b1
-          else
-            [
-              fmt_txt
-                "A and the first dimension of B must match (got %a and %a)"
-                Fmt.int a Fmt.int b0;
-            ]
-      | _ ->
-          [
-            fmt_txt "A must have rank 1 and B must have rank 2 (got %a and %a)"
-              Fmt.(list int)
-              a_lst
-              Fmt.(list int)
-              b_lst;
-          ])
-  | _, _ -> []
+let validate_inputs : int list -> int list -> (int * int, El.t) result =
+ fun a_lst b_lst ->
+  match (a_lst, b_lst) with
+  | [ a ], [ b0; b1 ] ->
+      if a > 15 || b1 > 15 then
+        Error
+          (p
+             [
+               fmt_txt "Sorry, I can't handle dimensions that large (%i)."
+                 (max a b1);
+             ])
+      else if a = b0 then Ok (a, b1)
+      else
+        Error
+          (fmt_txt "A and the first dimension of B must match (got %a and %a)"
+             Fmt.int a Fmt.int b0)
+  | _ ->
+      Error
+        (fmt_txt "A must have rank 1 and B must have rank 2 (got %a and %a)"
+           Fmt.(list int)
+           a_lst
+           Fmt.(list int)
+           b_lst)
 
 let explain container a_type_str b_type_str =
   let result_output = div [] in
@@ -124,7 +119,14 @@ let explain container a_type_str b_type_str =
   in
 
   let result_signal =
-    S.Pair.v parsed_a_signal parsed_b_signal |> S.map parse_types'
+    S.Pair.v parsed_a_signal parsed_b_signal
+    |> S.map (fun (as_opt, bs_opt) ->
+           match (as_opt, bs_opt) with
+           | Some a, Some b -> (
+               match validate_inputs a b with
+               | Ok (a, b) -> explain_vec_mat a b
+               | Error elem -> [ elem ])
+           | _ -> [])
   in
 
   Elr.def_children result_output result_signal;
