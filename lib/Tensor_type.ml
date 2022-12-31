@@ -2,6 +2,10 @@
 
 type bracketed = Bracketed | Unbracketed
 
+let pp_bracketed ppf = function
+  | Bracketed -> Fmt.pf ppf "Bracketed"
+  | Unbracketed -> Fmt.pf ppf "Unbracketed"
+
 module Unify_mode = struct
   type t = Unify_concrete_variables | Dont_unify_concrete_variables
 end

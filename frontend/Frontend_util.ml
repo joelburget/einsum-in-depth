@@ -80,3 +80,52 @@ module S_triple = struct
   let trd ?eq s = S.map ?eq (fun (_, _, c) -> c) s
   let v s0 s1 s2 = S.l3 (fun a b c -> (a, b, c)) s0 s1 s2
 end
+
+let parsed_input :
+    type a.
+    (string -> (a, string * string) result) ->
+    string ->
+    a option signal * El.t * El.t =
+ fun parse start_value ->
+  let input_elem = input ~at:[ At.value (Jstr.of_string start_value) ] () in
+  let parse_error_elem = div [] in
+
+  let input_signal, set_input = S.create start_value in
+  let parse_error_signal, set_parse_error = S.create [] in
+  let parsed_signal, set_parsed = S.create None in
+
+  Evr.endless_listen (as_target input_elem) Ev.change (fun _evt ->
+      set_input (Jstr.to_string (prop El.Prop.value input_elem)));
+
+  let output_logger =
+    S.log input_signal (fun str ->
+        match parse str with
+        | Result.Ok t ->
+            set_parsed (Some t);
+            set_parse_error []
+        | Error (msg1, msg2) ->
+            set_parsed None;
+            set_parse_error [ txt' msg1; txt' msg2 ])
+  in
+  Logr.hold output_logger;
+
+  Elr.def_children parse_error_elem parse_error_signal;
+  (parsed_signal, input_elem, parse_error_elem)
+
+let bracketed_parsed_input :
+    type a.
+    (string -> (a * Tensor_type.bracketed, string * string) result) ->
+    string ->
+    a option signal * El.t * El.t =
+ fun parse start_value ->
+  let bracket_signal, set_bracket = S.create Tensor_type.Unbracketed in
+  let out_signal, input_elem, err_elem = parsed_input parse start_value in
+  let out_signal =
+    S.map
+      (Option.map (fun (t, bracketed) ->
+           set_bracket bracketed;
+           t))
+      out_signal
+  in
+  let bracketed_input_elem = bracketed_input bracket_signal input_elem in
+  (out_signal, bracketed_input_elem, err_elem)
