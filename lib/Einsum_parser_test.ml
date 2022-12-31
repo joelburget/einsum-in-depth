@@ -3,7 +3,7 @@ type 'a parser = Lexing.position -> 'a Einsum_parser_runner.I.checkpoint
 let parse : type a. a Fmt.t -> a parser -> string -> unit =
  fun pp parser str ->
   match Einsum_parser_runner.parse parser str with
-  | Ok v -> Fmt.(pr "%a@." pp) v
+  | Ok v -> Fmt.pr "%a@." pp v
   | Error (location, indication, message) ->
       Fmt.pr "%s%s%s@." location indication message
 
