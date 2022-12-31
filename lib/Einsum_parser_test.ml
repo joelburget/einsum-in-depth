@@ -45,11 +45,14 @@ let%expect_test "Groups" =
 let%expect_test "Rewrites" =
   parse_rewrite "a -> a";
   parse_rewrite "i, i j -> j";
+  parse_rewrite "i, i j ->";
   parse_rewrite "() -> ...";
   parse_rewrite "..., (a b), () -> a b";
-  [%expect {|
+  [%expect
+    {|
     a -> a
     i, i j -> j
+    i, i j ->
     () -> ...
     ..., (a b), () -> a b |}]
 

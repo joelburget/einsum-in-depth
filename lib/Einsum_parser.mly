@@ -32,5 +32,5 @@ group:
   { group }
 
 rewrite:
-| bindings = separated_nonempty_list(COMMA, group) ARROW rhs = atom+ EOF
+| bindings = separated_nonempty_list(COMMA, group) ARROW rhs = atom* EOF
   { bindings, rhs }
