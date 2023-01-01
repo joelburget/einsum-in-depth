@@ -44,10 +44,6 @@ let parse_einsum str =
   | Ok rewrite -> Ok rewrite
   | Error (_location, indication, message) -> Error (indication, message)
 
-let collect_parse_errors = function
-  | Result.Ok _ -> []
-  | Error (msg1, msg2) -> [ msg1; msg2 ]
-
 let fmt_txt : type a. (a, Format.formatter, unit, El.t) format4 -> a =
  fun fmt -> Fmt.kstr (fun s -> El.txt' s) fmt
 
@@ -73,13 +69,6 @@ let render_mat items =
   items
   |> List.map (fun items -> items |> List.map Int.to_string |> List.map txt_td)
   |> List.map tr |> tbody
-
-module S_triple = struct
-  let fst ?eq s = S.map ?eq (fun (a, _, _) -> a) s
-  let snd ?eq s = S.map ?eq (fun (_, b, _) -> b) s
-  let trd ?eq s = S.map ?eq (fun (_, _, c) -> c) s
-  let v s0 s1 s2 = S.l3 (fun a b c -> (a, b, c)) s0 s1 s2
-end
 
 let parsed_input :
     type a.
@@ -129,3 +118,14 @@ let bracketed_parsed_input :
   in
   let bracketed_input_elem = bracketed_input bracket_signal input_elem in
   (out_signal, bracketed_input_elem, err_elem)
+
+let l4 :
+    type a b c d e.
+    (a -> b -> c -> d -> e) ->
+    a signal ->
+    b signal ->
+    c signal ->
+    d signal ->
+    e signal =
+ fun f s0 s1 s2 s3 ->
+  S.l2 (fun (a, b) (c, d) -> f a b c d) (S.Pair.v s0 s1) (S.Pair.v s2 s3)

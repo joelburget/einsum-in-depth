@@ -6,9 +6,9 @@ let render_tensor_type = Frontend_util.fmt_txt "%a" Tensor_type.pp
 
 let () =
   (* Broadcast_explanation.explain (Document.body G.document) "1, 2" "2, 3, 2" *)
-  Vector_matrix_explanation.explain (Document.body G.document) "3" "3, 4"
-(* Contraction_explanation.explain (Document.body G.document) "3" "3, 4" *)
-(*   "i, i j -> j" *)
+  (* Vector_matrix_explanation.explain (Document.body G.document) "3" "3, 4" *)
+  Contraction_explanation.explain (Document.body G.document) "3" "3, 4"
+    "i, i j -> j"
 
 let isometric () =
   let tensor_type = Tensor_type.[ Elem.Variable "a"; Elem.Concrete 1 ] in

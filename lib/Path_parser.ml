@@ -16,7 +16,7 @@ let strip_brackets s =
     (true, String.sub s 1 (String.length s - 2))
   else (false, s)
 
-let parse : string -> (bool * path, string) result =
+let parse : string -> (path * Tensor_type.bracketed, string) result =
  fun s ->
   let brackets_stripped, s = strip_brackets s in
   let stream = Scanning.from_string s in
@@ -28,7 +28,9 @@ let parse : string -> (bool * path, string) result =
       | Ok p -> loop () |> Result.map (fun path -> p :: path)
       | Error _ as e -> e
   in
-  loop () |> Result.map (fun path -> (brackets_stripped, path))
+  loop ()
+  |> Result.map (fun path ->
+         (path, if brackets_stripped then Tensor_type.Bracketed else Unbracketed))
 
 let%expect_test "parse_pair" =
   let go s =
@@ -52,13 +54,16 @@ let%expect_test "parse_pair" =
 let%expect_test "parse" =
   let go s =
     match parse s with
-    | Ok (brackets_stripped, pairs) ->
+    | Ok (pairs, bracketed) ->
+        let l_brack, r_brack =
+          match bracketed with
+          | Bracketed -> ("[", "]")
+          | Unbracketed -> ("", "")
+        in
         Fmt.(
-          pr "@[%s%a%s@]@."
-            (if brackets_stripped then "[" else "")
+          pr "@[%s%a%s@]@." l_brack
             (list ~sep:comma (parens (pair ~sep:comma int int)))
-            pairs
-            (if brackets_stripped then "]" else ""))
+            pairs r_brack)
     | Error msg -> Fmt.pr "%s@." msg
   in
   go "[]";
