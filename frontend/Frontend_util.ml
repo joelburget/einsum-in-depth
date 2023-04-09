@@ -11,12 +11,16 @@ let ( code,
       prop,
       as_target,
       div,
+      span,
       txt',
       table,
       tbody,
       td,
       tr,
-      p ) =
+      p,
+      ol,
+      ul,
+      li ) =
   El.
     ( code,
       set_children,
@@ -24,12 +28,16 @@ let ( code,
       prop,
       as_target,
       div,
+      span,
       txt',
       table,
       tbody,
       td,
       tr,
-      p )
+      p,
+      ol,
+      ul,
+      li )
 
 let txt_td str = td [ txt' str ]
 let class_ str = At.(class' (Jstr.of_string str))

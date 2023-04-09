@@ -7,6 +7,9 @@ open Tensor_playground
 type validated_inputs = (string * int) list * (string * int) list * string list
 
 module String_set = Set.Make (String)
+module String_map = Map.Make (String)
+
+let of_alist alist = String_map.of_seq (List.to_seq alist)
 
 let parse_contraction_s :
     string signal -> (El.t list, El.t list) Result.t signal =
@@ -89,16 +92,111 @@ let validate_inputs :
                   List.combine g2_names b_ty,
                   rhs_names )
       | x, y, z ->
-          let errs =
-            list_of_err x @ list_of_err y @ list_of_err z |> List.map txt'
-          in
-          Error errs)
+          Error (list_of_err x @ list_of_err y @ list_of_err z |> List.map txt')
+      )
   | _ ->
       (* TODO: generalize *)
       Error [ txt' "Currently only binary contractions are supported" ]
 
 let explain_contraction : validated_inputs -> (int * int) list -> El.t list =
- fun _ _ -> [ txt' "TODO: explanation" ]
+ (* We ignore the path for now since it has to be [(0, 1)] *)
+ fun (a_indices, b_indices, rhs_names) _path ->
+  let a_names_set = a_indices |> List.map fst |> String_set.of_list in
+  let b_names_set = b_indices |> List.map fst |> String_set.of_list in
+  let rhs_names_set = String_set.of_list rhs_names in
+  (* let contracted_names = String_set.diff rhs_names_set a_names_set in *)
+  let repeated_names = String_set.inter a_names_set b_names_set in
+  let omitted_names = [] in
+  let index_size = of_alist (a_indices @ b_indices) in
+  let result_dims =
+    List.map (fun name -> String_map.find name index_size) rhs_names
+  in
+  let in_rhs name =
+    match String_set.find_opt name rhs_names_set with
+    | Some _ -> true
+    | None -> false
+  in
+  let index_name (name, _) = if in_rhs name then name else ":" in
+  let a_indices' = List.map index_name a_indices in
+  let b_indices' = List.map index_name b_indices in
+  let index_size (name, size) = if in_rhs name then None else Some size in
+  let indexed_a_dims = List.filter_map index_size a_indices in
+  let indexed_b_dims = List.filter_map index_size b_indices in
+  [
+    ul
+      [
+        li
+          [
+            fmt_txt "The resulting tensor will have dimensions %a"
+              Fmt.(brackets (list ~sep:comma int))
+              result_dims;
+          ];
+        li
+          [
+            fmt_txt
+              "Each variable which occurs on the right-hand side (%a), will be \
+               an axis of the resulting tensor."
+              Fmt.(list ~sep:comma string)
+              (String_set.elements rhs_names_set);
+          ];
+        li
+          [
+            fmt_txt
+              "Names %a are omitted, so values along those axes will be summed"
+              Fmt.(brackets (list ~sep:comma string))
+              omitted_names;
+          ];
+        li
+          [
+            fmt_txt
+              "Names %a are repeated, so values along those axes will be \
+               multiplied"
+              Fmt.(brackets (list ~sep:comma string))
+              (String_set.elements repeated_names);
+          ];
+      ];
+    p
+      [
+        fmt_txt "For each index of the resulting tensor (%a):"
+          Fmt.(list ~sep:comma string)
+          (String_set.elements rhs_names_set);
+      ];
+    ol
+      [
+        li
+          [
+            ul
+              [
+                span [ txt' "Index into both of the input tensors:" ];
+                li
+                  [
+                    code
+                      [
+                        fmt_txt "A%a: %a"
+                          Fmt.(brackets (list ~sep:comma string))
+                          a_indices'
+                          Fmt.(brackets (list ~sep:comma int))
+                          indexed_a_dims;
+                      ];
+                  ];
+                li
+                  [
+                    code
+                      [
+                        fmt_txt "B%a: %a"
+                          Fmt.(brackets (list ~sep:comma string))
+                          b_indices'
+                          Fmt.(brackets (list ~sep:comma int))
+                          indexed_b_dims;
+                      ];
+                  ];
+              ];
+          ];
+        li [ txt' "Broadcast if necessary" ];
+        li [ txt' "Pointwise multiply" ];
+        li [ txt' "Sum" ];
+      ];
+  ]
 
 let parse_contraction : string -> (Einops.Rewrite.t, string * string) result =
  fun str ->
