@@ -110,9 +110,11 @@ let explain_contraction : validated_inputs -> (int * int) list -> El.t list =
   let a_names_set = a_indices |> List.map fst |> String_set.of_list in
   let b_names_set = b_indices |> List.map fst |> String_set.of_list in
   let rhs_names_set = String_set.of_list rhs_names in
-  (* let contracted_names = String_set.diff rhs_names_set a_names_set in *)
   let repeated_names = String_set.inter a_names_set b_names_set in
-  let omitted_names = [] in
+  let omitted_names =
+    String_set.(
+      diff (union a_names_set b_names_set) (union rhs_names_set repeated_names))
+  in
   let index_size = of_alist (a_indices @ b_indices) in
   let result_dims =
     List.map (fun name -> String_map.find name index_size) rhs_names
@@ -150,7 +152,7 @@ let explain_contraction : validated_inputs -> (int * int) list -> El.t list =
             fmt_txt
               "Names %a are omitted, so values along those axes will be summed"
               Fmt.(brackets (list ~sep:comma string))
-              omitted_names;
+              (String_set.elements omitted_names);
           ];
         li
           [
