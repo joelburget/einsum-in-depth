@@ -4,7 +4,11 @@ open Frontend_util
 open Note
 open Tensor_playground
 
-type validated_inputs = (string * int) list * (string * int) list * string list
+type validated_inputs = {
+  a_indices : (string * int) list;
+  b_indices : (string * int) list;
+  rhs_names : string list;
+}
 
 module String_set = Set.Make (String)
 module String_map = Map.Make (String)
@@ -88,9 +92,11 @@ let validate_inputs :
                 ]
             else
               Ok
-                ( List.combine g1_names a_ty,
-                  List.combine g2_names b_ty,
-                  rhs_names )
+                {
+                  a_indices = List.combine g1_names a_ty;
+                  b_indices = List.combine g2_names b_ty;
+                  rhs_names;
+                }
       | x, y, z ->
           Error (list_of_err x @ list_of_err y @ list_of_err z |> List.map txt')
       )
@@ -100,7 +106,7 @@ let validate_inputs :
 
 let explain_contraction : validated_inputs -> (int * int) list -> El.t list =
  (* We ignore the path for now since it has to be [(0, 1)] *)
- fun (a_indices, b_indices, rhs_names) _path ->
+ fun { a_indices; b_indices; rhs_names } _path ->
   let a_names_set = a_indices |> List.map fst |> String_set.of_list in
   let b_names_set = b_indices |> List.map fst |> String_set.of_list in
   let rhs_names_set = String_set.of_list rhs_names in
