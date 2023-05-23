@@ -68,6 +68,7 @@ let validate_inputs :
   | [ g1; g2 ] -> (
       match (get_names g1, get_names g2, get_names rhs) with
       | Ok g1_names, Ok g2_names, Ok rhs_names ->
+          let repeats = Util.find_repeats rhs_names in
           if List.length g1_names <> List.length a_ty then
             Error [ txt' "Wrong number of indices in first group" ]
           else if List.length g2_names <> List.length b_ty then
@@ -75,6 +76,13 @@ let validate_inputs :
           else if List.length g1_names > 2 || List.length g2_names > 2 then
             (* TODO: generalize *)
             Error [ txt' "Only 1D / 2D tensors are currently supported" ]
+          else if repeats <> [] then
+            Error
+              [
+                fmt_txt "Indices in the result must be unique. Invalid: %a."
+                  Fmt.(brackets (list ~sep:comma string))
+                  repeats;
+              ]
           else
             let g1_names_set = String_set.of_list g1_names in
             let g2_names_set = String_set.of_list g2_names in
