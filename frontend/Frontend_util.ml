@@ -2,6 +2,8 @@ open Tensor_playground
 open Brr
 open Brr_note
 open Note
+module String_set = Set.Make (String)
+module String_map = Map.Make (String)
 
 type direction = Horizontal | Vertical
 
@@ -127,13 +129,13 @@ let bracketed_parsed_input :
   let bracketed_input_elem = bracketed_input bracket_signal input_elem in
   (out_signal, bracketed_input_elem, err_elem)
 
-let l4 :
-    type a b c d e.
-    (a -> b -> c -> d -> e) ->
-    a signal ->
-    b signal ->
-    c signal ->
-    d signal ->
-    e signal =
- fun f s0 s1 s2 s3 ->
-  S.l2 (fun (a, b) (c, d) -> f a b c d) (S.Pair.v s0 s1) (S.Pair.v s2 s3)
+let result_list : ('a, 'e) result list -> ('a list, 'e) result =
+ fun results ->
+  let rec loop results =
+    match results with
+    | [] -> Ok []
+    | Ok x :: results -> (
+        match loop results with Ok xs -> Ok (x :: xs) | Error e -> Error e)
+    | Error e :: _ -> Error e
+  in
+  loop results

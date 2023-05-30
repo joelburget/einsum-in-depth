@@ -29,3 +29,9 @@ let%expect_test "find_repeats" =
   [%expect {|
     a
     b |}]
+
+let rec delete_from_list i xs =
+  match (xs, i) with
+  | [], _ -> []
+  | _ :: xs, 0 -> xs
+  | x :: xs, i -> x :: delete_from_list (i - 1) xs

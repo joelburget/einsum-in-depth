@@ -4,6 +4,7 @@
  (modules
   Broadcast_explanation
   Contraction_explanation
+  Einsum_explanation
   Frontend_util
   Isometric
   Tensor_playground_web

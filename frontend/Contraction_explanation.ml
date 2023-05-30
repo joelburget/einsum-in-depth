@@ -10,9 +10,6 @@ type validated_inputs = {
   rhs_names : string list;
 }
 
-module String_set = Set.Make (String)
-module String_map = Map.Make (String)
-
 let of_alist alist = String_map.of_seq (List.to_seq alist)
 
 let parse_contraction_s :
@@ -21,13 +18,6 @@ let parse_contraction_s :
       match parse_einsum str with
       | Ok _einsum -> Result.Ok []
       | Error (msg1, msg2) -> Error [ txt' msg1; txt' msg2 ])
-
-let rec get_names = function
-  | [] -> Ok []
-  | Einops.Atom.Name s :: atoms ->
-      get_names atoms |> Result.map (fun names -> s :: names)
-  | atom :: _ ->
-      Error (Fmt.str "get_names: expected name, got %a" Einops.Atom.pp atom)
 
 let list_of_err = function Result.Ok _ -> [] | Error err -> [ err ]
 
@@ -40,45 +30,68 @@ let validate_inputs :
   let bindings, rhs = eqn in
   match bindings with
   | [ g1; g2 ] -> (
-      match (get_names g1, get_names g2, get_names rhs) with
-      | Ok g1_names, Ok g2_names, Ok rhs_names ->
-          let repeats = Util.find_repeats rhs_names in
-          if List.length g1_names <> List.length a_ty then
-            Error [ txt' "Wrong number of indices in first group" ]
-          else if List.length g2_names <> List.length b_ty then
-            Error [ txt' "Wrong number of indices in second group" ]
-          else if List.length g1_names > 2 || List.length g2_names > 2 then
-            (* TODO: generalize *)
-            Error [ txt' "Only 1D / 2D tensors are currently supported" ]
-          else if repeats <> [] then
-            Error
-              [
-                fmt_txt "Indices in the result must be unique. Invalid: %a."
-                  Fmt.(brackets (list ~sep:comma string))
-                  repeats;
-              ]
-          else
-            let g1_names_set = String_set.of_list g1_names in
-            let g2_names_set = String_set.of_list g2_names in
-            let rhs_names_set = String_set.of_list rhs_names in
-            if
-              not
-                String_set.(
-                  subset rhs_names_set (union g1_names_set g2_names_set))
-            then
+      match Einops.Group.(get_names g1, get_names g2, get_names rhs) with
+      | Ok g1_names, Ok g2_names, Ok rhs_names -> (
+          let indices_okay1 =
+            if List.length g1_names <> List.length a_ty then
+              Error [ txt' "Wrong number of indices in first group" ]
+            else Ok ()
+          in
+
+          let indices_okay2 =
+            if List.length g2_names <> List.length b_ty then
+              Error [ txt' "Wrong number of indices in second group" ]
+            else Ok ()
+          in
+
+          let tensor_size_okay =
+            if List.length g1_names > 2 || List.length g2_names > 2 then
+              (* TODO: generalize *)
+              Error [ txt' "Only 1D / 2D tensors are currently supported" ]
+            else Ok ()
+          in
+
+          let unique_rhs_indices =
+            let repeats = Util.find_repeats rhs_names in
+            if repeats <> [] then
               Error
                 [
-                  txt'
-                    "Indices in the result must be a subset of the indices in \
-                     the inputs";
+                  fmt_txt "Indices in the result must be unique. Invalid: %a."
+                    Fmt.(brackets (list ~sep:comma string))
+                    repeats;
                 ]
             else
+              let g1_names_set = String_set.of_list g1_names in
+              let g2_names_set = String_set.of_list g2_names in
+              let rhs_names_set = String_set.of_list rhs_names in
+              if
+                not
+                  String_set.(
+                    subset rhs_names_set (union g1_names_set g2_names_set))
+              then
+                Error
+                  [
+                    txt'
+                      "Indices in the result must be a subset of the indices \
+                       in the inputs";
+                  ]
+              else Ok ()
+          in
+
+          match
+            (indices_okay1, indices_okay2, tensor_size_okay, unique_rhs_indices)
+          with
+          | Ok (), Ok (), Ok (), Ok () ->
               Ok
                 {
                   a_indices = List.combine g1_names a_ty;
                   b_indices = List.combine g2_names b_ty;
                   rhs_names;
                 }
+          | x, y, z, w ->
+              Error
+                (list_of_err x @ list_of_err y @ list_of_err z @ list_of_err w
+                |> List.flatten))
       | x, y, z ->
           Error (list_of_err x @ list_of_err y @ list_of_err z |> List.map txt')
       )
