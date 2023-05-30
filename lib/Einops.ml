@@ -43,11 +43,7 @@ module Single_contraction : sig
      the names of the indices of the other tensors [other_tensors], and the
      names of the indices of the eventual result [eventual_result]. *)
   val get_result :
-    string list ->
-    string list ->
-    string list list ->
-    string list ->
-    single_contraction
+    string list list -> string list list -> string list -> single_contraction
 end = struct
   module String_set = Set.Make (String)
 
@@ -63,41 +59,44 @@ end = struct
       Fmt.(list string ~sep:semi)
       preserved
 
-  let get_result a b other_tensors eventual_result =
+  let get_result contracted_tensors other_tensors eventual_result =
     let open String_set in
-    let a, b, other_tensors, eventual_result =
-      ( of_list a,
-        of_list b,
+    let contracted_tensors, other_tensors, eventual_result =
+      ( contracted_tensors |> List.flatten |> of_list,
         of_list (List.flatten other_tensors),
         of_list eventual_result )
     in
-    let a_b = union a b in
     (* Contract dimensions which aren't needed later *)
     let contracted =
       elements
-        (diff (union a_b other_tensors) (union eventual_result other_tensors))
+        (diff
+           (union contracted_tensors other_tensors)
+           (union eventual_result other_tensors))
     in
     (* Preserve dimensions which are needed later *)
     let preserved =
-      elements (inter a_b (union eventual_result other_tensors))
+      elements (inter contracted_tensors (union eventual_result other_tensors))
     in
     { contracted; preserved }
 
   let%expect_test "get_result" =
-    let go a b other_tensors eventual_result =
-      get_result a b other_tensors eventual_result
+    let go contracted_tensors other_tensors eventual_result =
+      get_result contracted_tensors other_tensors eventual_result
       |> pp_single_contraction Fmt.stdout
     in
-    go [ "a"; "b" ] [ "c"; "d" ] [] [ "a"; "b"; "c"; "d" ];
+    go [ [ "a"; "b" ]; [ "c"; "d" ] ] [] [ "a"; "b"; "c"; "d" ];
     [%expect {| contracted: [], preserved: [a; b; c; d] |}];
-    go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [] [];
+    go [ [ "a"; "j"; "k" ]; [ "a"; "j"; "k" ] ] [] [];
     [%expect {| contracted: [a; j; k], preserved: [] |}];
-    go [ "a"; "j"; "k" ] [ "a"; "i"; "j" ] [ [ "a"; "i"; "k" ] ] [];
+    go [ [ "a"; "j"; "k" ]; [ "a"; "i"; "j" ] ] [ [ "a"; "i"; "k" ] ] [];
     [%expect {| contracted: [j], preserved: [a; i; k] |}];
-    go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
+    go
+      [ [ "n"; "l"; "k" ]; [ "i"; "j"; "k" ] ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
-    [%expect {| contracted: [k], preserved: [i; j; l; n] |}]
+    [%expect {| contracted: [k], preserved: [i; j; l; n] |}];
+    go [ [ "i"; "i" ]; [ "i"; "i" ]; [ "i"; "i" ] ] [] [ "i" ];
+    [%expect {| contracted: [], preserved: [i] |}]
 end
 
 module Explain : sig
@@ -118,7 +117,7 @@ end = struct
                |> Util.delete_from_list l_ix
              in
              let single_contraction =
-               Single_contraction.get_result l_tensor r_tensor new_tensors
+               Single_contraction.get_result [ l_tensor; r_tensor ] new_tensors
                  result_group
              in
              let new_tensors =
