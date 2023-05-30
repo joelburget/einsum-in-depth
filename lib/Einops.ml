@@ -100,7 +100,7 @@ end = struct
 end
 
 module Explain : sig
-  val contract_path : Rewrite.t -> (int * int) list -> string list
+  val contract_path : Rewrite.t -> int list list -> string list
 end = struct
   let contract_path contraction path =
     let bindings, result_group = contraction in
@@ -108,16 +108,13 @@ end = struct
     let _, _, steps =
       path
       |> List.fold_left
-           (fun (i, tensors, steps) (l_ix, r_ix) ->
-             let l_tensor, r_tensor =
-               (List.nth tensors l_ix, List.nth tensors r_ix)
-             in
+           (fun (i, tensors, steps) ixs ->
+             let contracted_tensors = List.map (List.nth tensors) ixs in
              let new_tensors =
-               tensors |> Util.delete_from_list r_ix
-               |> Util.delete_from_list l_ix
+               List.fold_right Util.delete_from_list ixs tensors
              in
              let single_contraction =
-               Single_contraction.get_result [ l_tensor; r_tensor ] new_tensors
+               Single_contraction.get_result contracted_tensors new_tensors
                  result_group
              in
              let new_tensors =
@@ -125,10 +122,11 @@ end = struct
              in
              let step =
                Fmt.(
-                 str "Step %i: contract @[%a@] (@[%a@], @[%a@] -> @[%a@])" i
+                 str "Step %i: contract @[%a@] (@[%a@] -> @[%a@])" i
                    (list string ~sep:sp) single_contraction.contracted
-                   (list string ~sep:sp) l_tensor (list string ~sep:sp) r_tensor
-                   (list string ~sep:sp) single_contraction.preserved)
+                   (list (list string ~sep:sp) ~sep:comma)
+                   contracted_tensors (list string ~sep:sp)
+                   single_contraction.preserved)
              in
              (i + 1, new_tensors, List.append steps [ step ]))
            ( 1,
@@ -149,7 +147,7 @@ end = struct
           ],
           [] )
     in
-    let path = [ (1, 2); (0, 1) ] in
+    let path = [ [ 1; 2 ]; [ 0; 1 ] ] in
     contract_path rewrite path |> Fmt.(list ~sep:sp string) Fmt.stdout;
     [%expect
       {|

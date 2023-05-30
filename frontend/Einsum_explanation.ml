@@ -83,7 +83,7 @@ let explain container contraction_str path_str =
         let n_tensors = List.length bindings in
         let path =
           match path_opt with
-          | Some [] | None -> List.init (n_tensors - 1) (fun _ -> (0, 1))
+          | Some [] | None -> List.init (n_tensors - 1) (fun _ -> [ 0; 1 ])
           | Some path -> path
         in
         let steps = Einops.Explain.contract_path contraction path in

@@ -1,11 +1,21 @@
 module Scanning = Scanf.Scanning
 
-type path = (int * int) list
+type path = int list list
 
-let parse_pair s =
-  try Scanf.bscanf s "(%d, %d)" (fun x y -> Ok (x, y)) with
+let parse_int_list s =
+  try
+    let int_list = Scanf.bscanf s "(%[^)])" (fun x -> x) in
+    let int_list = String.split_on_char ',' int_list in
+    Ok
+      (List.map
+         (fun str ->
+           try str |> String.trim |> int_of_string
+           with Failure _ ->
+             raise (Failure (Fmt.str "%S could not be parsed as an int" str)))
+         int_list)
+  with
   | Scanf.Scan_failure s -> Error s
-  | Failure _ -> Error "Invalid pair"
+  | Failure s -> Error ("Invalid list: " ^ s)
   | End_of_file -> Error "Unexpected end of file"
 
 let parse_sep s =
@@ -24,7 +34,7 @@ let parse : string -> (path * Tensor_type.bracketed, string) result =
     parse_sep stream;
     if Scanning.end_of_input stream then Ok []
     else
-      match parse_pair stream with
+      match parse_int_list stream with
       | Ok p -> loop () |> Result.map (fun path -> p :: path)
       | Error _ as e -> e
   in
@@ -32,10 +42,10 @@ let parse : string -> (path * Tensor_type.bracketed, string) result =
   |> Result.map (fun path ->
          (path, if brackets_stripped then Tensor_type.Bracketed else Unbracketed))
 
-let%expect_test "parse_pair" =
+let%expect_test "parse_int_list" =
   let go s =
-    match parse_pair (Scanning.from_string s) with
-    | Ok (x, y) -> Fmt.pr "(%d, %d)@." x y
+    match parse_int_list (Scanning.from_string s) with
+    | Ok xs -> Fmt.(pr "@[(%a)@]@." (list ~sep:comma int) xs)
     | Error msg -> Fmt.pr "%s@." msg
   in
   go "(1, 2)";
@@ -46,15 +56,15 @@ let%expect_test "parse_pair" =
   [%expect
     {|
     (1, 2)
-    scanf: bad input at char number 2: looking for ',', found ' '
-    scanf: bad input at char number 4: character 'a' is not a decimal digit
-    scanf: bad input at char number 5: looking for ')', found '.'
+    Invalid list: "1 2" could not be parsed as an int
+    Invalid list: " a" could not be parsed as an int
+    Invalid list: " 2.0" could not be parsed as an int
     Unexpected end of file |}]
 
 let%expect_test "parse" =
   let go s =
     match parse s with
-    | Ok (pairs, bracketed) ->
+    | Ok (lists, bracketed) ->
         let l_brack, r_brack =
           match bracketed with
           | Bracketed -> ("[", "]")
@@ -62,8 +72,8 @@ let%expect_test "parse" =
         in
         Fmt.(
           pr "@[%s%a%s@]@." l_brack
-            (list ~sep:comma (parens (pair ~sep:comma int int)))
-            pairs r_brack)
+            (list ~sep:comma (parens (list ~sep:comma int)))
+            lists r_brack)
     | Error msg -> Fmt.pr "%s@." msg
   in
   go "[]";
@@ -71,10 +81,13 @@ let%expect_test "parse" =
   go "(1, 2)";
   go "(1, 2), (3, 4)";
   go "[(1, 2), (3, 4)]";
-  [%expect {|
+  go "[(1, 2, 3), (4, 5)]";
+  [%expect
+    {|
     []
 
     (1, 2)
     (1, 2), (3, 4)
     [(1, 2), (3, 4)]
+    [(1, 2, 3), (4, 5)]
     |}]
