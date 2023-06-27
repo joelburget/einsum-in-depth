@@ -32,6 +32,53 @@ module Rewrite = struct
   let pp = Fmt.(box (pair ~sep:(any " -> ") Bindings.pp Group.pp))
 end
 
+(** Given a list of strings, find a maximal set of matching indices, where each position in a list can only match once (in the case of duplicates either match is okay). The lists are not necessarily the same length. *)
+let find_matches lst1 lst2 =
+  let h1 = Hashtbl.create 10 in
+  let h2 = Hashtbl.create 10 in
+
+  let add_to_hashtbl h lst =
+    List.iteri
+      (fun i x ->
+        if Hashtbl.mem h x then Hashtbl.replace h x (i :: Hashtbl.find h x)
+        else Hashtbl.add h x [ i ])
+      lst
+  in
+
+  add_to_hashtbl h1 lst1;
+  add_to_hashtbl h2 lst2;
+
+  let matches = ref [] in
+
+  Hashtbl.iter
+    (fun k v1 ->
+      if Hashtbl.mem h2 k then
+        let v2 = Hashtbl.find h2 k in
+        let match_pairs = List.map2 (fun x y -> (k, x, y)) v1 v2 in
+        matches := List.append !matches match_pairs)
+    h1;
+
+  !matches
+
+let%expect_test "find_matches" =
+  let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%s, %d, %d)" a b c in
+  let go lst1 lst2 =
+    let result = find_matches lst1 lst2 in
+    Fmt.pr "@[[%a]@], @[[%a]@] -> @[[%a]@]@."
+      Fmt.(list ~sep:semi string)
+      lst1
+      Fmt.(list ~sep:semi string)
+      lst2
+      Fmt.(list ~sep:semi pp_triple)
+      result
+  in
+  go [ "a"; "b"; "c" ] [ "b"; "a"; "c" ];
+  [%expect {| [a; b; c], [b; a; c] -> [(a, 0, 1); (b, 1, 0); (c, 2, 2)]|}];
+  go [ "a"; "b" ] [ "b"; "c"; "a" ];
+  [%expect {| [a; b], [b; c; a] -> [(a, 0, 2); (b, 1, 0)]|}];
+  go [ "a"; "a" ] [ "a"; "a" ];
+  [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}]
+
 module Single_contraction : sig
   type single_contraction = {
     contracted : string list;
