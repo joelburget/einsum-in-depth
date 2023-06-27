@@ -99,8 +99,77 @@ end = struct
     [%expect {| contracted: [], preserved: [i] |}]
 end
 
+module Pyloops = struct
+  type t = {
+    free_indices : String_set.t;
+    summation_indices : String_set.t;
+    lhs_tensors : string list list;
+    rhs_tensor : string list;
+  }
+
+  let mk_indent indent = String.make (indent * 4) ' '
+
+  let pp ppf { free_indices; summation_indices; lhs_tensors; rhs_tensor } =
+    let free_indices = String_set.elements free_indices in
+    let summation_indices = String_set.elements summation_indices in
+
+    (* initialize result *)
+    (match rhs_tensor with
+    | [] -> ()
+    | _ ->
+        Fmt.pf ppf "result = np.empty((@[%a@]))@."
+          Fmt.(list ~sep:comma string)
+          (List.map (fun index -> "N" ^ index) rhs_tensor));
+
+    (* loops *)
+    let outer_indent =
+      List.fold_left
+        (fun indent index ->
+          Fmt.pf ppf "%sfor %s in range(N%s):@." (mk_indent indent) index index;
+          indent + 1)
+        0 free_indices
+    in
+    Fmt.pf ppf "%stotal = 0@." (mk_indent outer_indent);
+    let inner_indent =
+      List.fold_left
+        (fun indent index ->
+          Fmt.pf ppf "%sfor %s in range(N%s):@." (mk_indent indent) index index;
+          indent + 1)
+        outer_indent summation_indices
+    in
+
+    (* summation inside loop *)
+    (* let indices = free_indices @ summation_indices in *)
+    let pp_access ppf (tensor, indices) =
+      Fmt.pf ppf "%s[%a]" tensor Fmt.(list ~sep:comma string) indices
+    in
+    (* Name tensors starting with A, then B, etc *)
+    let accesses =
+      List.mapi
+        (fun i tensor -> (String.make 1 (Char.chr (i + 65)), tensor))
+        lhs_tensors
+    in
+    Fmt.pf ppf "%stotal += @[%a@]@." (mk_indent inner_indent)
+      Fmt.(list ~sep:(any " * ") pp_access)
+      accesses;
+
+    (* assign total to result *)
+    (match rhs_tensor with
+    | [] -> ()
+    | _ ->
+        Fmt.pf ppf "%sresult[@[%a@]] = total@." (mk_indent outer_indent)
+          Fmt.(list ~sep:comma string)
+          free_indices);
+
+    (* return result *)
+    match rhs_tensor with
+    | [] -> Fmt.pf ppf "return total@."
+    | _ -> Fmt.pf ppf "return result@."
+end
+
 module Explain : sig
   val contract_path : Rewrite.t -> int list list -> string list
+  val show_loops : Rewrite.t -> Pyloops.t
 end = struct
   let contract_path contraction path =
     let bindings, result_group = contraction in
@@ -154,4 +223,94 @@ end = struct
       Step 1: contract k (a j k, a i k -> a i j)
       Step 2: contract a i j (a i j, a i j -> )
       |}]
+
+  let show_loops rewrite =
+    let lhs, rhs = rewrite in
+    let lhs_tensors =
+      List.map (fun tensor -> tensor |> Group.get_names |> Result.get_ok) lhs
+    in
+    Pyloops.
+      {
+        free_indices = Rewrite.free_indices rewrite;
+        summation_indices = Rewrite.summation_indices rewrite;
+        lhs_tensors;
+        rhs_tensor = rhs |> Group.get_names |> Result.get_ok;
+      }
+
+  let%expect_test "show_loops" =
+    let go (rewrite : Rewrite.t) =
+      show_loops rewrite |> Pyloops.pp Fmt.stdout
+    in
+
+    let rw : Rewrite.t =
+      ( [ [ Atom.Name "i"; Name "k" ]; [ Name "k"; Name "j" ] ],
+        [ Atom.Name "i"; Name "j" ] )
+    in
+    go rw;
+    [%expect
+      {|
+      result = np.empty((Ni, Nj))
+      for i in range(Ni):
+          for j in range(Nj):
+              total = 0
+              for k in range(Nk):
+                  total += A[i, k] * B[k, j]
+              result[i, j] = total
+      return result
+    |}];
+
+    go ([ [ Atom.Name "s" ]; [ Name "s"; Name "t" ]; [ Name "t" ] ], []);
+    [%expect
+      {|
+      total = 0
+      for s in range(Ns):
+          for t in range(Nt):
+              total += A[s] * B[s, t] * C[t]
+      return total
+    |}];
+
+    go ([ [ Atom.Name "i"; Name "i" ] ], [ Name "i" ]);
+    [%expect
+      {|
+      result = np.empty((Ni))
+      for i in range(Ni):
+          total = 0
+          total += A[i, i]
+          result[i] = total
+      return result
+    |}];
+
+    go ([ [ Atom.Name "i"; Name "i" ] ], []);
+    [%expect
+      {|
+      total = 0
+      for i in range(Ni):
+          total += A[i, i]
+      return total
+    |}];
+
+    go ([ [ Atom.Name "s" ]; [ Name "s"; Name "t" ]; [ Name "t" ] ], []);
+    [%expect
+      {|
+      total = 0
+      for s in range(Ns):
+          for t in range(Nt):
+              total += A[s] * B[s, t] * C[t]
+      return total
+    |}];
+
+    go
+      ( [ [ Atom.Name "b"; Name "i" ]; [ Name "b"; Name "j" ] ],
+        [ Name "b"; Name "i"; Name "j" ] );
+    [%expect
+      {|
+      result = np.empty((Nb, Ni, Nj))
+      for b in range(Nb):
+          for i in range(Ni):
+              for j in range(Nj):
+                  total = 0
+                  total += A[b, i] * B[b, j]
+                  result[b, i, j] = total
+      return result
+    |}]
 end
