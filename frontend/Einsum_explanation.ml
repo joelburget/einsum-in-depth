@@ -87,7 +87,14 @@ let explain container contraction_str path_str =
           | Some path -> path
         in
         let steps = Einops.Explain.contract_path contraction path in
-        steps |> List.map (fun step -> div [ txt' step ])
+        let python_code =
+          Einops.Explain.show_loops contraction
+          |> Fmt.to_to_string Einops.Pyloops.pp
+        in
+        [
+          div (steps |> List.map (fun step -> div [ txt' step ]));
+          code [ El.pre [ txt' python_code ] ];
+        ]
     | _ -> [ div [ txt' "TODO" ] ]
   in
 
