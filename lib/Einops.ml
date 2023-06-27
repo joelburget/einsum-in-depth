@@ -105,7 +105,19 @@ let%expect_test "find_matches" =
   [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}]
 
 module Single_contraction : sig
+  type op =
+    | Tensordot of (int * int) list
+    | Matmul
+    | Transpose
+    | Inner
+    | Trace
+    | Sum
+    | Diag
+    | Swapaxes
+    | Id
+
   type single_contraction = {
+    operations : op list;
     contracted : string list;
     preserved : string list;
   }
@@ -119,21 +131,70 @@ module Single_contraction : sig
 end = struct
   module String_set = Set.Make (String)
 
+  type op =
+    | Tensordot of (int * int) list
+    | Matmul
+    | Transpose
+    | Inner
+    | Trace
+    | Sum
+    | Diag
+    | Swapaxes
+    | Id
+
   type single_contraction = {
+    operations : op list;
     contracted : string list;
     preserved : string list;
   }
 
-  let pp_single_contraction ppf { contracted; preserved } =
-    Fmt.pf ppf "contracted: @[[%a]@], preserved: @[[%a]@]"
+  let pp_op ppf = function
+    | Tensordot ixs ->
+        Fmt.pf ppf "tensordot@[<hov 1>(%a)@]"
+          Fmt.(list ~sep:comma (pair int int))
+          ixs
+    | Matmul -> Fmt.string ppf "matmul"
+    | Transpose -> Fmt.string ppf "transpose"
+    | Inner -> Fmt.string ppf "inner"
+    | Trace -> Fmt.string ppf "trace"
+    | Sum -> Fmt.string ppf "sum"
+    | Diag -> Fmt.string ppf "diag"
+    | Swapaxes -> Fmt.string ppf "swapaxes"
+    | Id -> Fmt.string ppf "id"
+
+  let pp_single_contraction ppf { operations; contracted; preserved } =
+    Fmt.pf ppf "operations: @[[%a]@], contracted: @[[%a]@], preserved: @[[%a]@]"
+      Fmt.(list ~sep:comma pp_op)
+      operations
       Fmt.(list string ~sep:semi)
       contracted
       Fmt.(list string ~sep:semi)
       preserved
 
+  (* Try matching two inputs and an output to a tensordot operation *)
+  (* let match_tensordot x y z = *)
+  (*   let matches = find_matches x y in *)
+  (*   failwith "TODO" *)
+
+  let match_op contracted_tensors result =
+    match (contracted_tensors, result) with
+    | [ x ], x' when x = x' -> Some Id
+    | [ [ x ]; [ y ] ], [] when x = y -> Some Inner
+    | [ [ x; y ] ], [ y'; x' ] when x = x' && y = y' -> Some Transpose
+    | [ [ x; y ]; [ y'; z ] ], [ x'; z' ] when x = x' && y = y' && z = z' ->
+        Some Matmul
+    | [ [ x; x' ] ], [] when x = x' -> Some Trace
+    | [ [ x; x' ] ], [ x'' ] when x = x' && x = x'' -> Some Diag
+    | [ [ _ ] ], [] -> Some Sum
+    | [ x ], x' when x <> x' && String_set.(of_list x = of_list x') ->
+        Some Swapaxes
+    (* | [ x; y ], z -> ( *)
+    (*     match match_tensordot x y z with Some op -> Some op | _ -> None) *)
+    | _ -> None
+
   let get_result contracted_tensors other_tensors eventual_result =
     let open String_set in
-    let contracted_tensors, other_tensors, eventual_result =
+    let contracted_tensors', other_tensors', eventual_result' =
       ( contracted_tensors |> List.flatten |> of_list,
         of_list (List.flatten other_tensors),
         of_list eventual_result )
@@ -142,14 +203,56 @@ end = struct
     let contracted =
       elements
         (diff
-           (union contracted_tensors other_tensors)
-           (union eventual_result other_tensors))
+           (union contracted_tensors' other_tensors')
+           (union eventual_result' other_tensors'))
     in
     (* Preserve dimensions which are needed later *)
     let preserved =
-      elements (inter contracted_tensors (union eventual_result other_tensors))
+      inter contracted_tensors' (union eventual_result' other_tensors')
     in
-    { contracted; preserved }
+    (* Maintain the order of dimensions in the result if possible so op can be Id. *)
+    let preserved =
+      if preserved = eventual_result' then eventual_result
+      else elements preserved
+    in
+    let operations =
+      match match_op contracted_tensors preserved with
+      | Some op -> [ op ]
+      | None -> [ (* TODO *) ]
+    in
+    { operations; contracted; preserved }
+
+  let%expect_test "operations" =
+    let go contracted_tensors eventual_result =
+      (* Fmt.pr "contracted_tensors: [%a], eventual_result: [%a]\n" *)
+      (*   Fmt.(list ~sep:semi (list string)) *)
+      (*   contracted_tensors *)
+      (*   Fmt.(list string) *)
+      (*   eventual_result; *)
+      let { operations; _ } =
+        get_result contracted_tensors [] eventual_result
+      in
+      Fmt.pr "%a\n" Fmt.(list ~sep:comma pp_op) operations
+    in
+    go [ [ "i" ]; [ "i" ] ] [];
+    [%expect {| inner |}];
+    go [ [ "i" ] ] [ "i" ];
+    [%expect {| id |}];
+    go [ [ "i"; "j" ]; [ "j"; "k" ] ] [ "i"; "k" ];
+    [%expect {| matmul |}];
+    go [ [ "i"; "i" ] ] [];
+    [%expect {| trace |}];
+    go [ [ "i"; "j" ] ] [ "i"; "j" ];
+    [%expect {| id |}];
+    go [ [ "i"; "j" ] ] [ "j"; "i" ];
+    [%expect {| transpose |}];
+    go [ [ "i" ] ] [];
+    [%expect {| sum |}];
+    go [ [ "i"; "i" ] ] [ "i" ];
+    [%expect {| diag |}]
+  (* TODO *)
+  (* go [ [ "i"; "j"; "k" ] ] [ "k"; "j"; "i" ]; *)
+  (* [%expect {| swapaxes |}] *)
 
   let%expect_test "get_result" =
     let go contracted_tensors other_tensors eventual_result =
@@ -157,18 +260,18 @@ end = struct
       |> pp_single_contraction Fmt.stdout
     in
     go [ [ "a"; "b" ]; [ "c"; "d" ] ] [] [ "a"; "b"; "c"; "d" ];
-    [%expect {| contracted: [], preserved: [a; b; c; d] |}];
+    [%expect {| operations: [], contracted: [], preserved: [a; b; c; d] |}];
     go [ [ "a"; "j"; "k" ]; [ "a"; "j"; "k" ] ] [] [];
-    [%expect {| contracted: [a; j; k], preserved: [] |}];
+    [%expect {| operations: [], contracted: [a; j; k], preserved: [] |}];
     go [ [ "a"; "j"; "k" ]; [ "a"; "i"; "j" ] ] [ [ "a"; "i"; "k" ] ] [];
-    [%expect {| contracted: [j], preserved: [a; i; k] |}];
+    [%expect {| operations: [], contracted: [j], preserved: [a; i; k] |}];
     go
       [ [ "n"; "l"; "k" ]; [ "i"; "j"; "k" ] ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
-    [%expect {| contracted: [k], preserved: [i; j; l; n] |}];
+    [%expect {| operations: [], contracted: [k], preserved: [i; j; l; n] |}];
     go [ [ "i"; "i" ]; [ "i"; "i" ]; [ "i"; "i" ] ] [] [ "i" ];
-    [%expect {| contracted: [], preserved: [i] |}]
+    [%expect {| operations: [], contracted: [], preserved: [i] |}]
 end
 
 module Pyloops = struct
