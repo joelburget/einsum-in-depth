@@ -1,3 +1,5 @@
+module String_set = Set.Make (String)
+
 module Atom = struct
   type t = Name of string | Ellipsis | Parenthesized of string list
 
@@ -7,6 +9,7 @@ module Atom = struct
     | Parenthesized names -> Fmt.(parens (list ~sep:sp string)) ppf names
 end
 
+(** A Group is the set of indices of a tensor. *)
 module Group = struct
   type t = Atom.t list
 
@@ -20,15 +23,37 @@ module Group = struct
         Error (Fmt.str "get_names: expected name, got %a" Atom.pp atom)
 end
 
+(** Bindings are the left-hand side of a rewrite. *)
 module Bindings = struct
   type t = Group.t list
 
   let pp = Fmt.(box (list ~sep:comma Group.pp))
 end
 
-module Rewrite = struct
+(** A Rewrite binds some groups of tensor indices and results in some tensor indices. *)
+module Rewrite : sig
   type t = Bindings.t * Group.t
+  type indices = { free : String_set.t; summation : String_set.t }
 
+  val indices : t -> indices
+  val free_indices : t -> String_set.t
+  val summation_indices : t -> String_set.t
+  val pp : t Fmt.t
+end = struct
+  type t = Bindings.t * Group.t
+  type indices = { free : String_set.t; summation : String_set.t }
+
+  let indices (lhs, rhs) =
+    let lhs' =
+      lhs
+      |> List.map (fun group -> group |> Group.get_names |> Result.get_ok)
+      |> List.flatten |> String_set.of_list
+    in
+    let rhs' = rhs |> Group.get_names |> Result.get_ok |> String_set.of_list in
+    { free = rhs'; summation = String_set.diff lhs' rhs' }
+
+  let free_indices t = (indices t).free
+  let summation_indices t = (indices t).summation
   let pp = Fmt.(box (pair ~sep:(any " -> ") Bindings.pp Group.pp))
 end
 
