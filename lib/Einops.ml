@@ -382,6 +382,9 @@ end = struct
     steps
 
   let%expect_test "contract_path" =
+    let go rewrite path =
+      contract_path rewrite path |> Fmt.(list ~sep:sp string) Fmt.stdout
+    in
     let rewrite =
       Atom.
         ( [
@@ -391,13 +394,24 @@ end = struct
           ],
           [] )
     in
-    let path = [ [ 1; 2 ]; [ 0; 1 ] ] in
-    contract_path rewrite path |> Fmt.(list ~sep:sp string) Fmt.stdout;
+    go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
     [%expect
       {|
       Step 1: contract k (a j k, a i k -> a i j)
       Step 2: contract a i j (a i j, a i j -> )
-      |}]
+      |}];
+    go rewrite [ [ 0; 1 ]; [ 0; 1 ] ];
+    [%expect
+      {|
+      Step 1: contract j (a i j, a j k -> a i k)
+      Step 2: contract a i k (a i k, a i k -> )
+      |}];
+    let rewrite =
+      ( [ [ Atom.Name "i"; Name "k" ]; [ Name "k"; Name "j" ] ],
+        [ Atom.Name "i"; Name "j" ] )
+    in
+    go rewrite [ [ 0; 1 ] ];
+    [%expect{| Step 1: contract k (i k, k j -> i j) |}]
 
   let show_loops rewrite =
     let lhs, rhs = rewrite in
@@ -417,11 +431,9 @@ end = struct
       show_loops rewrite |> Pyloops.pp Fmt.stdout
     in
 
-    let rw : Rewrite.t =
+    go
       ( [ [ Atom.Name "i"; Name "k" ]; [ Name "k"; Name "j" ] ],
-        [ Atom.Name "i"; Name "j" ] )
-    in
-    go rw;
+        [ Atom.Name "i"; Name "j" ] );
     [%expect
       {|
       result = np.empty((Ni, Nj))
