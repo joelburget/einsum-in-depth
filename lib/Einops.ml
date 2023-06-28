@@ -105,19 +105,23 @@ let%expect_test "find_matches" =
   [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}]
 
 module Single_contraction : sig
-  type op =
-    | Tensordot of (int * int) list
-    | Matmul
-    | Transpose
-    | Inner
-    | Trace
-    | Sum
-    | Diag
-    | Swapaxes
-    | Id
+  module Op : sig
+    type t =
+      | Tensordot of (int * int) list
+      | Matmul
+      | Transpose
+      | Inner
+      | Trace
+      | Sum
+      | Diag
+      | Swapaxes
+      | Id
+
+    val pp : t Fmt.t
+  end
 
   type single_contraction = {
-    operations : op list;
+    operations : Op.t list;
     contracted : string list;
     preserved : string list;
   }
@@ -131,40 +135,42 @@ module Single_contraction : sig
 end = struct
   module String_set = Set.Make (String)
 
-  type op =
-    | Tensordot of (int * int) list
-    | Matmul
-    | Transpose
-    | Inner
-    | Trace
-    | Sum
-    | Diag
-    | Swapaxes
-    | Id
+  module Op = struct
+    type t =
+      | Tensordot of (int * int) list
+      | Matmul
+      | Transpose
+      | Inner
+      | Trace
+      | Sum
+      | Diag
+      | Swapaxes
+      | Id
+
+    let pp ppf = function
+      | Tensordot ixs ->
+          Fmt.pf ppf "tensordot@[<hov 1>(%a)@]"
+            Fmt.(list ~sep:comma (pair int int))
+            ixs
+      | Matmul -> Fmt.string ppf "matmul"
+      | Transpose -> Fmt.string ppf "transpose"
+      | Inner -> Fmt.string ppf "inner"
+      | Trace -> Fmt.string ppf "trace"
+      | Sum -> Fmt.string ppf "sum"
+      | Diag -> Fmt.string ppf "diag"
+      | Swapaxes -> Fmt.string ppf "swapaxes"
+      | Id -> Fmt.string ppf "id"
+  end
 
   type single_contraction = {
-    operations : op list;
+    operations : Op.t list;
     contracted : string list;
     preserved : string list;
   }
 
-  let pp_op ppf = function
-    | Tensordot ixs ->
-        Fmt.pf ppf "tensordot@[<hov 1>(%a)@]"
-          Fmt.(list ~sep:comma (pair int int))
-          ixs
-    | Matmul -> Fmt.string ppf "matmul"
-    | Transpose -> Fmt.string ppf "transpose"
-    | Inner -> Fmt.string ppf "inner"
-    | Trace -> Fmt.string ppf "trace"
-    | Sum -> Fmt.string ppf "sum"
-    | Diag -> Fmt.string ppf "diag"
-    | Swapaxes -> Fmt.string ppf "swapaxes"
-    | Id -> Fmt.string ppf "id"
-
   let pp_single_contraction ppf { operations; contracted; preserved } =
     Fmt.pf ppf "operations: @[[%a]@], contracted: @[[%a]@], preserved: @[[%a]@]"
-      Fmt.(list ~sep:comma pp_op)
+      Fmt.(list ~sep:comma Op.pp)
       operations
       Fmt.(list string ~sep:semi)
       contracted
@@ -178,7 +184,7 @@ end = struct
 
   let match_op contracted_tensors result =
     match (contracted_tensors, result) with
-    | [ x ], x' when x = x' -> Some Id
+    | [ x ], x' when x = x' -> Some Op.Id
     | [ [ x ]; [ y ] ], [] when x = y -> Some Inner
     | [ [ x; y ] ], [ y'; x' ] when x = x' && y = y' -> Some Transpose
     | [ [ x; y ]; [ y'; z ] ], [ x'; z' ] when x = x' && y = y' && z = z' ->
@@ -232,7 +238,7 @@ end = struct
       let { operations; _ } =
         get_result contracted_tensors [] eventual_result
       in
-      Fmt.pr "%a\n" Fmt.(list ~sep:comma pp_op) operations
+      Fmt.pr "%a\n" Fmt.(list ~sep:comma Op.pp) operations
     in
     go [ [ "i" ]; [ "i" ] ] [];
     [%expect {| inner |}];
