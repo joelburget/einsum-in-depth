@@ -344,7 +344,11 @@ end
 
 module Explain : sig
   val contract_path : Rewrite.t -> int list list -> string list
+  (** Contract along the given path, returning an explanation in the format of
+   one string per step. *)
+
   val show_loops : Rewrite.t -> Pyloops.t
+  (** Put in [Pyloops.t] format. *)
 end = struct
   let contract_path contraction path =
     let bindings, result_group = contraction in
@@ -411,7 +415,7 @@ end = struct
         [ Atom.Name "i"; Name "j" ] )
     in
     go rewrite [ [ 0; 1 ] ];
-    [%expect{| Step 1: contract k (i k, k j -> i j) |}]
+    [%expect {| Step 1: contract k (i k, k j -> i j) |}]
 
   let show_loops rewrite =
     let lhs, rhs = rewrite in
