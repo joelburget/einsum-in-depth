@@ -191,7 +191,7 @@ end = struct
     | [ [ x; x' ] ], [] when x = x' -> Some Trace
     | [ [ x; x' ] ], [ x'' ] when x = x' && x = x'' -> Some Diag
     | [ [ _ ] ], [] -> Some Sum
-    | [ x ], x' when x <> x' && String_set.(of_list x = of_list x') ->
+    | [ x ], x' when x <> x' && String_set.(equal (of_list x) (of_list x')) ->
         Some Swapaxes
     (* | [ x; y ], z -> ( *)
     (*     match match_tensordot x y z with Some op -> Some op | _ -> None) *)
@@ -254,10 +254,9 @@ end = struct
     go [ [ "i" ] ] [];
     [%expect {| sum |}];
     go [ [ "i"; "i" ] ] [ "i" ];
-    [%expect {| diag |}]
-  (* TODO *)
-  (* go [ [ "i"; "j"; "k" ] ] [ "k"; "j"; "i" ]; *)
-  (* [%expect {| swapaxes |}] *)
+    [%expect {| diag |}];
+    go [ [ "i"; "j"; "k" ] ] [ "k"; "j"; "i" ];
+    [%expect {| swapaxes |}]
 
   let%expect_test "get_result" =
     let go contracted_tensors other_tensors eventual_result =
