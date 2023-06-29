@@ -107,7 +107,8 @@ let%expect_test "find_matches" =
 module Single_contraction : sig
   module Op : sig
     type t =
-      | Tensordot of (int * int) list
+      | Tensordot1 of int
+      | Tensordot2 of (int * int) list
       | Matmul
       | Transpose
       | Inner
@@ -136,7 +137,8 @@ end = struct
 
   module Op = struct
     type t =
-      | Tensordot of (int * int) list
+      | Tensordot1 of int
+      | Tensordot2 of (int * int) list
       | Matmul
       | Transpose
       | Inner
@@ -147,9 +149,10 @@ end = struct
       | Id
 
     let pp ppf = function
-      | Tensordot ixs ->
-          Fmt.pf ppf "tensordot@[<hov 1>(%a)@]"
-            Fmt.(list ~sep:comma (pair int int))
+      | Tensordot1 ix -> Fmt.pf ppf "tensordot %d" ix
+      | Tensordot2 ixs ->
+          Fmt.pf ppf "tensordot @[<hov 1>[%a]@]"
+            Fmt.(list ~sep:comma (parens (pair int int ~sep:comma)))
             ixs
       | Matmul -> Fmt.string ppf "matmul"
       | Transpose -> Fmt.string ppf "transpose"
@@ -176,10 +179,60 @@ end = struct
       Fmt.(list string ~sep:semi)
       preserved
 
+  (* We can simplify a list of matches into a single index if the count from
+     the end of a and the beginning of b simultaneously (and only contain up to
+     two matches). *)
+  let matches_simplify matches len_x =
+    List.length matches <= 2
+    && List.for_all
+         (fun (_, a, b) -> (b = 0 || b = 1) && len_x - a - 1 = b)
+         matches
+
+  let%expect_test "matches_simplify" =
+    let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%s, %d, %d)" a b c in
+    let go matches len_x =
+      Fmt.pr "@[[%a] -> %b@]@."
+        Fmt.(list ~sep:semi pp_triple)
+        matches
+        (matches_simplify matches len_x)
+    in
+    go [] 2;
+    [%expect {| [] -> true|}];
+    go [ ("a", 1, 0); ("b", 0, 1) ] 2;
+    [%expect {| [(a, 1, 0); (b, 0, 1)] -> true|}];
+    go [ ("a", 0, 0) ] 2;
+    [%expect {| [(a, 0, 0)] -> false|}];
+    go [ ("a", 1, 1) ] 2;
+    [%expect {| [(a, 1, 1)] -> false|}];
+    go [ ("a", 0, 1); ("b", 1, 0) ] 2;
+    [%expect {| [(a, 0, 1); (b, 1, 0)] -> true|}];
+    go [ ("a", 0, 1); ("b", 1, 0) ] 3;
+    [%expect {| [(a, 0, 1); (b, 1, 0)] -> false|}];
+    go [ ("a", 1, 1); ("b", 2, 0) ] 3;
+    [%expect {| [(a, 1, 1); (b, 2, 0)] -> true|}];
+    go [ ("a", 0, 2) ] 3;
+    [%expect {| [(a, 0, 2)] -> false|}]
+
   (* Try matching two inputs and an output to a tensordot operation *)
-  (* let match_tensordot x y z = *)
-  (*   let matches = find_matches x y in *)
-  (*   failwith "TODO" *)
+  let match_tensordot x y _z (* XXX use z? *) =
+    let matches = find_matches x y in
+    match matches with
+    | [] -> Some (Op.Tensordot1 0)
+    | _ ->
+        if matches_simplify matches (List.length x) then
+          Some (Op.Tensordot1 (List.length matches))
+        else Some (Op.Tensordot2 (List.map (fun (_, a, b) -> (a, b)) matches))
+
+  let%expect_test "match_tensordot" =
+    let go x y = Fmt.pr "%a@." (Fmt.option Op.pp) (match_tensordot x y []) in
+    go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ];
+    [%expect {| tensordot [(0, 1), (1, 0)] |}];
+    go [ "a"; "b"; "c" ] [ "c"; "b" ];
+    [%expect {| tensordot 2 |}];
+    go [ "a"; "b"; "c" ] [ "c"; "d" ];
+    [%expect {| tensordot 1 |}];
+    go [ "a"; "b"; "c" ] [ "d"; "e" ];
+    [%expect {| tensordot 0 |}]
 
   let match_op contracted_tensors result =
     match (contracted_tensors, result) with
@@ -193,8 +246,7 @@ end = struct
     | [ [ _ ] ], [] -> Some Sum
     | [ x ], x' when x <> x' && String_set.(equal (of_list x) (of_list x')) ->
         Some Swapaxes
-    (* | [ x; y ], z -> ( *)
-    (*     match match_tensordot x y z with Some op -> Some op | _ -> None) *)
+    | [ x; y ], z -> match_tensordot x y z
     | _ -> None
 
   let get_result contracted_tensors other_tensors eventual_result =
@@ -256,7 +308,15 @@ end = struct
     go [ [ "i"; "i" ] ] [ "i" ];
     [%expect {| diag |}];
     go [ [ "i"; "j"; "k" ] ] [ "k"; "j"; "i" ];
-    [%expect {| swapaxes |}]
+    [%expect {| swapaxes |}];
+    go [ [ "a"; "b"; "c" ]; [ "b"; "a"; "d" ] ] [ "c"; "d" ];
+    [%expect {| tensordot [(0, 1), (1, 0)] |}];
+    go [ [ "a"; "b"; "c" ]; [ "c"; "b" ] ] [ "a" ];
+    [%expect {| tensordot 2 |}];
+    go [ [ "a"; "b"; "c" ]; [ "c"; "d" ] ] [ "a"; "b"; "d" ];
+    [%expect {| tensordot 1 |}];
+    go [ [ "a"; "b"; "c" ]; [ "d"; "e" ] ] [ "a"; "b"; "c"; "d"; "e" ];
+    [%expect {| tensordot 0 |}]
 
   let%expect_test "get_result" =
     let go contracted_tensors other_tensors eventual_result =
@@ -264,16 +324,24 @@ end = struct
       |> pp Fmt.stdout
     in
     go [ [ "a"; "b" ]; [ "c"; "d" ] ] [] [ "a"; "b"; "c"; "d" ];
-    [%expect {| operations: [], contracted: [], preserved: [a; b; c; d] |}];
+    [%expect
+      {| operations: [tensordot 0], contracted: [], preserved: [a; b; c; d] |}];
     go [ [ "a"; "j"; "k" ]; [ "a"; "j"; "k" ] ] [] [];
-    [%expect {| operations: [], contracted: [a; j; k], preserved: [] |}];
+    [%expect
+      {|
+        operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted: [a; j; k], preserved:
+        [] |}];
     go [ [ "a"; "j"; "k" ]; [ "a"; "i"; "j" ] ] [ [ "a"; "i"; "k" ] ] [];
-    [%expect {| operations: [], contracted: [j], preserved: [a; i; k] |}];
+    [%expect
+      {|
+        operations: [tensordot [(0, 0), (1, 2)]], contracted: [j], preserved:
+        [a; i; k] |}];
     go
       [ [ "n"; "l"; "k" ]; [ "i"; "j"; "k" ] ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
-    [%expect {| operations: [], contracted: [k], preserved: [i; j; l; n] |}];
+    [%expect
+      {| operations: [tensordot [(2, 2)]], contracted: [k], preserved: [i; j; l; n] |}];
     go [ [ "i"; "i" ]; [ "i"; "i" ]; [ "i"; "i" ] ] [] [ "i" ];
     [%expect {| operations: [], contracted: [], preserved: [i] |}]
 end
