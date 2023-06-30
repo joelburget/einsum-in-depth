@@ -323,11 +323,6 @@ end = struct
 
   let%expect_test "operations" =
     let go contracted_tensors eventual_result =
-      (* Fmt.pr "contracted_tensors: [%a], eventual_result: [%a]\n" *)
-      (*   Fmt.(list ~sep:semi (list string)) *)
-      (*   contracted_tensors *)
-      (*   Fmt.(list string) *)
-      (*   eventual_result; *)
       let { operations; _ } =
         get_result contracted_tensors [] eventual_result
       in
