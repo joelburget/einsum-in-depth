@@ -482,11 +482,13 @@ end = struct
              in
              let step =
                Fmt.(
-                 str "Step %i: contract @[%a@] (@[%a@] -> @[%a@])" i
+                 str "Step %i: contract @[%a@] (@[%a@] -> @[%a@]) (%a)" i
                    (list string ~sep:sp) single_contraction.contracted
                    (list (list string ~sep:sp) ~sep:comma)
                    contracted_tensors (list string ~sep:sp)
-                   single_contraction.preserved)
+                   single_contraction.preserved
+                   (list Single_contraction.Op.pp ~sep:comma)
+                   single_contraction.operations)
              in
              (i + 1, new_tensors, List.append steps [ step ]))
            ( 1,
@@ -513,21 +515,21 @@ end = struct
     go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract k (a j k, a i k -> a i j)
-      Step 2: contract a i j (a i j, a i j -> )
+      Step 1: contract k (a j k, a i k -> a i j) (tensordot [(2, 2)]; TODO a j a i -> a i j)
+      Step 2: contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     go rewrite [ [ 0; 1 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract j (a i j, a j k -> a i k)
-      Step 2: contract a i k (a i k, a i k -> )
+      Step 1: contract j (a i j, a j k -> a i k) (tensordot [(2, 1)]; TODO a i a k -> a i k)
+      Step 2: contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     let rewrite =
       ( [ [ Atom.Name "i"; Name "k" ]; [ Name "k"; Name "j" ] ],
         [ Atom.Name "i"; Name "j" ] )
     in
     go rewrite [ [ 0; 1 ] ];
-    [%expect {| Step 1: contract k (i k, k j -> i j) |}]
+    [%expect {| Step 1: contract k (i k, k j -> i j) (matmul) |}]
 
   let show_loops rewrite =
     let lhs, rhs = rewrite in
