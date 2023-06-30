@@ -249,12 +249,17 @@ end = struct
 
   (* Try matching two inputs and an output to a tensordot operation *)
   let match_tensordot x y z =
-    let matches = find_matches x y in
+    let matches =
+      find_matches x y
+      (* Don't match indices which should be preserved. *)
+      |> List.filter (fun (elem, _, _) -> not (List.mem elem z))
+    in
     let remainder =
       remove_indices x (List.map (fun (_, i, _) -> i) matches)
       @ remove_indices y (List.map (fun (_, _, i) -> i) matches)
     in
-    if remainder = z then
+    (* XXX This ignores the need to rearrange indices *)
+    if String_set.(equal (of_list remainder) (of_list z)) then
       match matches with
       | [] -> Some (Op.Tensordot1 0)
       | _ ->
@@ -370,9 +375,7 @@ end = struct
         [] |}];
     go [ [ "a"; "j"; "k" ]; [ "a"; "i"; "j" ] ] [ [ "a"; "i"; "k" ] ] [];
     [%expect
-      {|
-        operations: [tensordot [(0, 0), (1, 2)]], contracted: [j], preserved:
-        [a; i; k] |}];
+      {| operations: [tensordot [(1, 2)]], contracted: [j], preserved: [a; i; k] |}];
     go
       [ [ "n"; "l"; "k" ]; [ "i"; "j"; "k" ] ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
