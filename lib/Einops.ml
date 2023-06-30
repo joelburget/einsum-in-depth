@@ -102,7 +102,9 @@ let%expect_test "find_matches" =
   go [ "a"; "b" ] [ "b"; "c"; "a" ];
   [%expect {| [a; b], [b; c; a] -> [(a, 0, 2); (b, 1, 0)]|}];
   go [ "a"; "a" ] [ "a"; "a" ];
-  [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}]
+  [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}];
+  go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ];
+  [%expect {| [a; j; k], [a; j; k] -> [(a, 0, 0); (k, 2, 2); (j, 1, 1)]|}]
 
 module Single_contraction : sig
   module Op : sig
@@ -213,26 +215,66 @@ end = struct
     go [ ("a", 0, 2) ] 3;
     [%expect {| [(a, 0, 2)] -> false|}]
 
+  (* Remove list elements at the given indices *)
+  let remove_indices lst indices =
+    let rec go lst indices acc =
+      match (lst, indices) with
+      | [], _ -> List.rev acc
+      | _, [] -> List.rev_append acc lst
+      | x :: xs, i :: is ->
+          if i = 0 then go xs (List.map pred is) acc
+          else go xs (List.map pred indices) (x :: acc)
+    in
+    go lst (List.sort compare indices) []
+
+  let%expect_test "remove_indices" =
+    let go lst indices =
+      Fmt.(
+        pr "@[[%a] - [%a] -> [%a]@]@." (list ~sep:comma int) lst
+          (list ~sep:comma int) indices (list ~sep:comma int)
+          (remove_indices lst indices))
+    in
+    go [] [];
+    [%expect {| [] - [] -> []|}];
+    go [] [ 0 ];
+    [%expect {| [] - [0] -> []|}];
+    go [ 1 ] [ 0 ];
+    [%expect {| [1] - [0] -> []|}];
+    go [ 1; 2; 3 ] [ 0; 1 ];
+    [%expect {| [1, 2, 3] - [0, 1] -> [3]|}];
+    go [ 1; 2; 3 ] [ 1; 0 ];
+    [%expect {| [1, 2, 3] - [1, 0] -> [3]|}];
+    go [ 1; 2; 3; 4; 5; 6 ] [ 0; 2; 4 ];
+    [%expect {| [1, 2, 3, 4, 5, 6] - [0, 2, 4] -> [2, 4, 6]|}]
+
   (* Try matching two inputs and an output to a tensordot operation *)
-  let match_tensordot x y _z (* XXX use z? *) =
+  let match_tensordot x y z =
     let matches = find_matches x y in
-    match matches with
-    | [] -> Some (Op.Tensordot1 0)
-    | _ ->
-        if matches_simplify matches (List.length x) then
-          Some (Op.Tensordot1 (List.length matches))
-        else Some (Op.Tensordot2 (List.map (fun (_, a, b) -> (a, b)) matches))
+    let remainder =
+      remove_indices x (List.map (fun (_, i, _) -> i) matches)
+      @ remove_indices y (List.map (fun (_, _, i) -> i) matches)
+    in
+    if remainder = z then
+      match matches with
+      | [] -> Some (Op.Tensordot1 0)
+      | _ ->
+          if matches_simplify matches (List.length x) then
+            Some (Op.Tensordot1 (List.length matches))
+          else Some (Op.Tensordot2 (List.map (fun (_, a, b) -> (a, b)) matches))
+    else None
 
   let%expect_test "match_tensordot" =
-    let go x y = Fmt.pr "%a@." (Fmt.option Op.pp) (match_tensordot x y []) in
-    go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ];
+    let go x y z = Fmt.pr "%a@." (Fmt.option Op.pp) (match_tensordot x y z) in
+    go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
     [%expect {| tensordot [(0, 1), (1, 0)] |}];
-    go [ "a"; "b"; "c" ] [ "c"; "b" ];
+    go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
     [%expect {| tensordot 2 |}];
-    go [ "a"; "b"; "c" ] [ "c"; "d" ];
+    go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
     [%expect {| tensordot 1 |}];
-    go [ "a"; "b"; "c" ] [ "d"; "e" ];
-    [%expect {| tensordot 0 |}]
+    go [ "a"; "b"; "c" ] [ "d"; "e" ] [ "a"; "b"; "c"; "d"; "e" ];
+    [%expect {| tensordot 0 |}];
+    go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [];
+    [%expect {| tensordot [(0, 0), (2, 2), (1, 1)] |}]
 
   let match_op contracted_tensors result =
     match (contracted_tensors, result) with
