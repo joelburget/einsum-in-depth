@@ -246,8 +246,7 @@ end = struct
       remove_indices x (List.map (fun (_, i, _) -> i) matches)
       @ remove_indices y (List.map (fun (_, _, i) -> i) matches)
     in
-    (* XXX This ignores the need to rearrange indices *)
-    if String_set.(equal (of_list remainder) (of_list z)) then
+    if List.(equal String.equal remainder z) then
       match matches with
       | [] -> Some (Op.Tensordot1 0)
       | _ ->
@@ -258,14 +257,14 @@ end = struct
 
   let%expect_test "match_tensordot" =
     let go x y z = Fmt.pr "%a@." (Fmt.option Op.pp) (match_tensordot x y z) in
-    go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
-    [%expect {| tensordot [(0, 1), (1, 0)] |}];
-    go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
-    [%expect {| tensordot 2 |}];
-    go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
-    [%expect {| tensordot 1 |}];
     go [ "a"; "b"; "c" ] [ "d"; "e" ] [ "a"; "b"; "c"; "d"; "e" ];
     [%expect {| tensordot 0 |}];
+    go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
+    [%expect {| tensordot 1 |}];
+    go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
+    [%expect {| tensordot 2 |}];
+    go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
+    [%expect {| tensordot [(0, 1), (1, 0)] |}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [];
     [%expect {| tensordot [(0, 0), (2, 2), (1, 1)] |}]
 
@@ -362,14 +361,18 @@ end = struct
         operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted: [a; j; k], preserved:
         [] |}];
     go [ [ "a"; "j"; "k" ]; [ "a"; "i"; "j" ] ] [ [ "a"; "i"; "k" ] ] [];
-    [%expect
-      {| operations: [tensordot [(1, 2)]], contracted: [j], preserved: [a; i; k] |}];
+    [%expect {| operations: [], contracted: [j], preserved: [a; i; k] |}];
     go
       [ [ "n"; "l"; "k" ]; [ "i"; "j"; "k" ] ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
+    [%expect {| operations: [], contracted: [k], preserved: [i; j; l; n] |}];
+    go
+      [ [ "n"; "l"; "k" ]; [ "i"; "j"; "k" ] ]
+      [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
+      [ "n"; "l"; "i"; "j" ];
     [%expect
-      {| operations: [tensordot [(2, 2)]], contracted: [k], preserved: [i; j; l; n] |}];
+      {| operations: [tensordot [(2, 2)]], contracted: [k], preserved: [n; l; i; j] |}];
     go [ [ "i"; "i" ]; [ "i"; "i" ]; [ "i"; "i" ] ] [] [ "i" ];
     [%expect {| operations: [], contracted: [], preserved: [i] |}]
 end
@@ -497,13 +500,13 @@ end = struct
     go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract k (a j k, a i k -> a i j) (tensordot [(2, 2)])
+      Step 1: contract k (a j k, a i k -> a i j) ()
       Step 2: contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     go rewrite [ [ 0; 1 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract j (a i j, a j k -> a i k) (tensordot [(2, 1)])
+      Step 1: contract j (a i j, a j k -> a i k) ()
       Step 2: contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
