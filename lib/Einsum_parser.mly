@@ -11,26 +11,16 @@
 (* %nonassoc ARROW *)
 
 %start <Einops.Rewrite.t> rewrite
-%start <Einops.Atom.t>    atom_top
 %start <Einops.Group.t>   group_top
 
 %%
 
-atom_top: atom = atom EOF { atom }
 group_top: group = group EOF { group }
 
-atom:
-| name = STR
-  { Name name }
-| LPAREN names = STR* RPAREN
-  { Parenthesized names }
-| ELLIPSIS
-  { Ellipsis }
-
 group:
-| group = atom+
+| group = STR+
   { group }
 
 rewrite:
-| bindings = separated_nonempty_list(COMMA, group) ARROW rhs = atom* EOF
+| bindings = separated_nonempty_list(COMMA, group) ARROW rhs = STR* EOF
   { bindings, rhs }

@@ -1,26 +1,14 @@
 module String_set = Set.Make (String)
 
-module Atom = struct
-  type t = Name of string | Ellipsis | Parenthesized of string list
-
-  let pp ppf = function
-    | Name name -> Fmt.string ppf name
-    | Ellipsis -> Fmt.string ppf "..."
-    | Parenthesized names -> Fmt.(parens (list ~sep:sp string)) ppf names
-end
-
 (** A Group is the set of indices of a tensor. *)
 module Group = struct
-  type t = Atom.t list
+  type t = string list
 
-  let pp = Fmt.(box (list ~sep:sp Atom.pp))
+  let pp = Fmt.(box (list ~sep:sp string))
 
   let rec get_names = function
     | [] -> Ok []
-    | Atom.Name s :: atoms ->
-        get_names atoms |> Result.map (fun names -> s :: names)
-    | atom :: _ ->
-        Error (Fmt.str "get_names: expected name, got %a" Atom.pp atom)
+    | s :: atoms -> get_names atoms |> Result.map (fun names -> s :: names)
 end
 
 (** Bindings are the left-hand side of a rewrite. *)
@@ -504,13 +492,7 @@ end = struct
       contract_path rewrite path |> Fmt.(list ~sep:sp string) Fmt.stdout
     in
     let rewrite =
-      Atom.
-        ( [
-            [ Name "a"; Name "i"; Name "j" ];
-            [ Name "a"; Name "j"; Name "k" ];
-            [ Name "a"; Name "i"; Name "k" ];
-          ],
-          [] )
+      ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
     in
     go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
     [%expect
@@ -524,10 +506,7 @@ end = struct
       Step 1: contract j (a i j, a j k -> a i k) (tensordot [(2, 1)])
       Step 2: contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
-    let rewrite =
-      ( [ [ Atom.Name "i"; Name "k" ]; [ Name "k"; Name "j" ] ],
-        [ Atom.Name "i"; Name "j" ] )
-    in
+    let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
     go rewrite [ [ 0; 1 ] ];
     [%expect {| Step 1: contract k (i k, k j -> i j) (matmul) |}]
 
@@ -549,9 +528,7 @@ end = struct
       show_loops rewrite |> Pyloops.pp Fmt.stdout
     in
 
-    go
-      ( [ [ Atom.Name "i"; Name "k" ]; [ Name "k"; Name "j" ] ],
-        [ Atom.Name "i"; Name "j" ] );
+    go ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]);
     [%expect
       {|
       result = np.empty((Ni, Nj))
@@ -564,7 +541,7 @@ end = struct
       return result
     |}];
 
-    go ([ [ Atom.Name "s" ]; [ Name "s"; Name "t" ]; [ Name "t" ] ], []);
+    go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
     [%expect
       {|
       total = 0
@@ -574,7 +551,7 @@ end = struct
       return total
     |}];
 
-    go ([ [ Atom.Name "i"; Name "i" ] ], [ Name "i" ]);
+    go ([ [ "i"; "i" ] ], [ "i" ]);
     [%expect
       {|
       result = np.empty((Ni))
@@ -585,7 +562,7 @@ end = struct
       return result
     |}];
 
-    go ([ [ Atom.Name "i"; Name "i" ] ], []);
+    go ([ [ "i"; "i" ] ], []);
     [%expect
       {|
       total = 0
@@ -594,7 +571,7 @@ end = struct
       return total
     |}];
 
-    go ([ [ Atom.Name "s" ]; [ Name "s"; Name "t" ]; [ Name "t" ] ], []);
+    go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
     [%expect
       {|
       total = 0
@@ -604,9 +581,7 @@ end = struct
       return total
     |}];
 
-    go
-      ( [ [ Atom.Name "b"; Name "i" ]; [ Name "b"; Name "j" ] ],
-        [ Name "b"; Name "i"; Name "j" ] );
+    go ([ [ "b"; "i" ]; [ "b"; "j" ] ], [ "b"; "i"; "j" ]);
     [%expect
       {|
       result = np.empty((Nb, Ni, Nj))
