@@ -515,13 +515,13 @@ end = struct
     go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract k (a j k, a i k -> a i j) (tensordot [(2, 2)]; TODO a j a i -> a i j)
+      Step 1: contract k (a j k, a i k -> a i j) (tensordot [(2, 2)])
       Step 2: contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     go rewrite [ [ 0; 1 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract j (a i j, a j k -> a i k) (tensordot [(2, 1)]; TODO a i a k -> a i k)
+      Step 1: contract j (a i j, a j k -> a i k) (tensordot [(2, 1)])
       Step 2: contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     let rewrite =
