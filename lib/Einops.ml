@@ -450,16 +450,20 @@ module Explain : sig
   (** Contract along the given path, returning an explanation in the format of
    one string per step. *)
 
+  val get_contractions :
+    Rewrite.t -> int list list -> (string list list * Single_contraction.t) list
+  (** Get the contractions along the given path. *)
+
   val show_loops : Rewrite.t -> Pyloops.t
   (** Put in [Pyloops.t] format. *)
 end = struct
-  let contract_path contraction path =
-    let bindings, result_group = contraction in
+  let get_contractions rewrite path =
+    let bindings, result_group = rewrite in
     let result_group = result_group |> Group.get_names |> Result.get_ok in
-    let _, _, steps =
+    let _, steps =
       path
       |> List.fold_left
-           (fun (i, tensors, steps) ixs ->
+           (fun (tensors, steps) ixs ->
              let contracted_tensors = List.map (List.nth tensors) ixs in
              let new_tensors =
                List.fold_right Util.delete_from_list ixs tensors
@@ -472,23 +476,33 @@ end = struct
                List.append new_tensors [ single_contraction.preserved ]
              in
              let step =
-               Fmt.(
-                 str "Step %i: contract @[%a@] (@[%a@] -> @[%a@]) (%a)" i
-                   (list string ~sep:sp) single_contraction.contracted
-                   (list (list string ~sep:sp) ~sep:comma)
-                   contracted_tensors (list string ~sep:sp)
-                   single_contraction.preserved
-                   (list Single_contraction.Op.pp ~sep:comma)
-                   single_contraction.operations)
+               Single_contraction.get_result contracted_tensors new_tensors
+                 result_group
              in
-             (i + 1, new_tensors, List.append steps [ step ]))
-           ( 1,
-             List.map
+             (new_tensors, List.append steps [ (contracted_tensors, step) ]))
+           ( List.map
                (fun binding -> binding |> Group.get_names |> Result.get_ok)
                bindings,
              [] )
     in
     steps
+
+  let contract_path rewrite path =
+    get_contractions rewrite path
+    |> List.mapi
+         (fun
+           i
+           ((contracted_tensors, single_contraction) :
+             string list list * Single_contraction.t)
+         ->
+           Fmt.(
+             str "Step %i: contract @[%a@] (@[%a@] -> @[%a@]) (%a)" (i + 1)
+               (list string ~sep:sp) single_contraction.contracted
+               (list (list string ~sep:sp) ~sep:comma)
+               contracted_tensors (list string ~sep:sp)
+               single_contraction.preserved
+               (list Single_contraction.Op.pp ~sep:comma)
+               single_contraction.operations))
 
   let%expect_test "contract_path" =
     let go rewrite path =
