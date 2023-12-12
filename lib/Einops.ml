@@ -449,31 +449,28 @@ module Explain : sig
   val show_loops : Rewrite.t -> Pyloops.t
   (** Put in [Pyloops.t] format. *)
 end = struct
-  let get_contractions rewrite path =
-    let bindings, result_group = rewrite in
-    let _, steps =
-      path
-      |> List.fold_left
-           (fun (tensors, steps) ixs ->
-             let contracted_tensors = List.map (List.nth tensors) ixs in
-             let new_tensors =
-               List.fold_right Util.delete_from_list ixs tensors
-             in
-             let single_contraction =
-               Single_contraction.get_result contracted_tensors new_tensors
-                 result_group
-             in
-             let new_tensors =
-               List.append new_tensors [ single_contraction.preserved ]
-             in
-             let step =
-               Single_contraction.get_result contracted_tensors new_tensors
-                 result_group
-             in
-             (new_tensors, List.append steps [ (contracted_tensors, step) ]))
-           (bindings, [])
-    in
-    steps
+  let get_contractions (bindings, result_group) path =
+    path
+    |> List.fold_left
+         (fun (tensors, steps) ixs ->
+           let contracted_tensors = List.map (List.nth tensors) ixs in
+           let new_tensors =
+             List.fold_right Util.delete_from_list ixs tensors
+           in
+           let single_contraction =
+             Single_contraction.get_result contracted_tensors new_tensors
+               result_group
+           in
+           let new_tensors =
+             List.append new_tensors [ single_contraction.preserved ]
+           in
+           let step =
+             Single_contraction.get_result contracted_tensors new_tensors
+               result_group
+           in
+           (new_tensors, List.append steps [ (contracted_tensors, step) ]))
+         (bindings, [])
+    |> snd
 
   let contract_path rewrite path =
     get_contractions rewrite path
