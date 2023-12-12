@@ -5,10 +5,6 @@ module Group = struct
   type t = string list
 
   let pp = Fmt.(box (list ~sep:sp string))
-
-  let rec get_names = function
-    | [] -> Ok []
-    | s :: atoms -> get_names atoms |> Result.map (fun names -> s :: names)
 end
 
 (** Bindings are the left-hand side of a rewrite. *)
@@ -32,12 +28,8 @@ end = struct
   type indices = { free : String_set.t; summation : String_set.t }
 
   let indices (lhs, rhs) =
-    let lhs' =
-      lhs
-      |> List.map (fun group -> group |> Group.get_names |> Result.get_ok)
-      |> List.flatten |> String_set.of_list
-    in
-    let rhs' = rhs |> Group.get_names |> Result.get_ok |> String_set.of_list in
+    let lhs' = lhs |> List.flatten |> String_set.of_list in
+    let rhs' = rhs |> String_set.of_list in
     { free = rhs'; summation = String_set.diff lhs' rhs' }
 
   let free_indices t = (indices t).free
@@ -459,7 +451,6 @@ module Explain : sig
 end = struct
   let get_contractions rewrite path =
     let bindings, result_group = rewrite in
-    let result_group = result_group |> Group.get_names |> Result.get_ok in
     let _, steps =
       path
       |> List.fold_left
@@ -480,10 +471,7 @@ end = struct
                  result_group
              in
              (new_tensors, List.append steps [ (contracted_tensors, step) ]))
-           ( List.map
-               (fun binding -> binding |> Group.get_names |> Result.get_ok)
-               bindings,
-             [] )
+           (bindings, [])
     in
     steps
 
@@ -529,15 +517,12 @@ end = struct
 
   let show_loops rewrite =
     let lhs, rhs = rewrite in
-    let lhs_tensors =
-      List.map (fun tensor -> tensor |> Group.get_names |> Result.get_ok) lhs
-    in
     Pyloops.
       {
         free_indices = Rewrite.free_indices rewrite;
         summation_indices = Rewrite.summation_indices rewrite;
-        lhs_tensors;
-        rhs_tensor = rhs |> Group.get_names |> Result.get_ok;
+        lhs_tensors = lhs;
+        rhs_tensor = rhs;
       }
 
   let%expect_test "show_loops" =

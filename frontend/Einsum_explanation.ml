@@ -36,12 +36,10 @@ let validate_inputs :
     =
  fun rewrite path ->
   let bindings, rhs = rewrite in
-  match
-    (validate_path (List.length bindings) path, Einops.Group.get_names rhs)
-  with
-  | Some errors, _ -> Error errors
-  | None, Ok rhs_names -> (
-      let repeats = Util.find_repeats rhs_names in
+  match validate_path (List.length bindings) path with
+  | Some errors -> Error errors
+  | None ->
+      let repeats = Util.find_repeats rhs in
       if repeats <> [] then
         Error
           [
@@ -50,20 +48,16 @@ let validate_inputs :
               repeats;
           ]
       else
-        match bindings |> List.map Einops.Group.get_names |> result_list with
-        | Error errors -> Error [ txt' errors ]
-        | Ok lhs_names ->
-            let lhs_names' = lhs_names |> List.concat |> String_set.of_list in
-            let rhs_names_set = String_set.of_list rhs_names in
-            if not String_set.(subset rhs_names_set lhs_names') then
-              Error
-                [
-                  txt'
-                    "Indices in the result must be a subset of the indices in \
-                     the inputs";
-                ]
-            else Ok ())
-  | None, Error e -> Error [ txt' e ]
+        let lhs_names' = bindings |> List.concat |> String_set.of_list in
+        let rhs_names_set = String_set.of_list rhs in
+        if not String_set.(subset rhs_names_set lhs_names') then
+          Error
+            [
+              txt'
+                "Indices in the result must be a subset of the indices in the \
+                 inputs";
+            ]
+        else Ok ()
 
 let explain container contraction_str path_str =
   let result_output = div [] in
