@@ -7,6 +7,7 @@
   Einsum_explanation
   Frontend_util
   Isometric
+  Tensor_diagram
   Tensor_playground_web
   Vector_matrix_explanation)
  (js_of_ocaml

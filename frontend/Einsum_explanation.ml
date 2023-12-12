@@ -67,32 +67,37 @@ let explain container contraction_str path_str =
   let parsed_path_signal, path_input, path_err_elem =
     bracketed_parsed_input parse_path path_str
   in
-  let contraction_signal, c_input, c_err_elem =
+  let rewrite_signal, c_input, c_err_elem =
     parsed_input parse_einsum contraction_str
   in
 
-  let f path_opt = function
-    | Some contraction ->
-        let bindings, _result_group = contraction in
-        let n_tensors = List.length bindings in
-        let path =
-          match path_opt with
-          | Some [] | None -> List.init (n_tensors - 1) (fun _ -> [ 0; 1 ])
-          | Some path -> path
-        in
-        let steps = Einops.Explain.contract_path contraction path in
+  let f path = function
+    | Some rewrite ->
+        let steps = Einops.Explain.contract_path ?path rewrite in
         let python_code =
-          Einops.Explain.show_loops contraction
+          Einops.Explain.show_loops rewrite
           |> Fmt.to_to_string Einops.Pyloops.pp
         in
+        let diagram_div =
+          div ~at:At.[ id (Jstr.of_string "tensor-diagram") ] []
+        in
+        let children =
+          rewrite |> Tensor_diagram.Drawing.draw_rewrite
+          |> List.map (fun drawing ->
+                 let child = Brr.El.div [] in
+                 Tensor_diagram.Tensor_diagram.draw child drawing;
+                 child)
+        in
+        Brr.El.set_children diagram_div children;
         [
           div (steps |> List.map (fun step -> div [ txt' step ]));
           code [ El.pre [ txt' python_code ] ];
+          diagram_div;
         ]
     | _ -> [ div [ txt' "TODO" ] ]
   in
 
-  let explanation_signal = S.l2 f parsed_path_signal contraction_signal in
+  let explanation_signal = S.l2 f parsed_path_signal rewrite_signal in
 
   Elr.def_children result_output explanation_signal;
   set_children container

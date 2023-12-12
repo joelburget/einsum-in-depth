@@ -109,10 +109,11 @@ module Single_contraction : sig
     preserved : string list;
   }
 
-  (* [get_result a b other_tensors eventual_result] returns the result of a
-     single contraction, given the names of the contracted indices [a] and [b],
-     the names of the indices of the other tensors [other_tensors], and the
-     names of the indices of the eventual result [eventual_result]. *)
+  (* [get_result contracted_tensors other_tensors eventual_result] returns the
+     result of a single contraction, given the (names of the indices of) the
+     [contracted_tensors], the names of the indices of the other tensors
+     [other_tensors], and the names of the indices of the eventual result
+     [eventual_result]. *)
   val get_result : string list list -> string list list -> string list -> t
 end = struct
   module String_set = Set.Make (String)
