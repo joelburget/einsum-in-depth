@@ -438,18 +438,26 @@ module Pyloops = struct
 end
 
 module Explain : sig
-  val contract_path : Rewrite.t -> int list list -> string list
+  val contract_path : ?path:int list list -> Rewrite.t -> string list
   (** Contract along the given path, returning an explanation in the format of
    one string per step. *)
 
   val get_contractions :
-    Rewrite.t -> int list list -> (string list list * Single_contraction.t) list
+    ?path:int list list ->
+    Rewrite.t ->
+    (string list list * Single_contraction.t) list
   (** Get the contractions along the given path. *)
 
   val show_loops : Rewrite.t -> Pyloops.t
   (** Put in [Pyloops.t] format. *)
 end = struct
-  let get_contractions (bindings, result_group) path =
+  let get_contractions ?path (bindings, result_group) =
+    let n_tensors = List.length bindings in
+    let path =
+      match path with
+      | Some [] | None -> List.init (n_tensors - 1) (fun _ -> [ 0; 1 ])
+      | Some path -> path
+    in
     path
     |> List.fold_left
          (fun (tensors, steps) ixs ->
@@ -472,8 +480,8 @@ end = struct
          (bindings, [])
     |> snd
 
-  let contract_path rewrite path =
-    get_contractions rewrite path
+  let contract_path ?path rewrite =
+    get_contractions ?path rewrite
     |> List.mapi
          (fun
            i
@@ -491,7 +499,7 @@ end = struct
 
   let%expect_test "contract_path" =
     let go rewrite path =
-      contract_path rewrite path |> Fmt.(list ~sep:sp string) Fmt.stdout
+      contract_path ~path rewrite |> Fmt.(list ~sep:sp string) Fmt.stdout
     in
     let rewrite =
       ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
@@ -513,13 +521,13 @@ end = struct
     [%expect {| Step 1: contract k (i k, k j -> i j) (matmul) |}]
 
   let show_loops rewrite =
-    let lhs, rhs = rewrite in
+    let lhs_tensors, rhs_tensor = rewrite in
     Pyloops.
       {
         free_indices = Rewrite.free_indices rewrite;
         summation_indices = Rewrite.summation_indices rewrite;
-        lhs_tensors = lhs;
-        rhs_tensor = rhs;
+        lhs_tensors;
+        rhs_tensor;
       }
 
   let%expect_test "show_loops" =
