@@ -111,8 +111,6 @@ module Drawing : sig
 
   val draw_contraction :
     string list list * Single_contraction.t -> Tensor_diagram.t
-
-  val draw_rewrite : Rewrite.t -> Tensor_diagram.t list
 end = struct
   open Tensor_playground.Einops
 
@@ -141,7 +139,4 @@ end = struct
       (fun drawing dim_name ->
         Tensor_diagram.add_contraction 0 1 dim_name drawing)
       drawing contracted
-
-  let draw_rewrite rewrite =
-    rewrite |> Explain.get_contractions |> List.map draw_contraction
 end

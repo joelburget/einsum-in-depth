@@ -439,9 +439,8 @@ module Pyloops = struct
 end
 
 module Explain : sig
-  val contract_path : ?path:int list list -> Rewrite.t -> string list
-  (** Contract along the given path, returning an explanation in the format of
-   one string per step. *)
+  val contraction : string list list * Single_contraction.t -> string
+  (** Explain a single contraction step *)
 
   val get_contractions :
     ?path:int list list ->
@@ -481,26 +480,22 @@ end = struct
          (bindings, [])
     |> snd
 
-  let contract_path ?path rewrite =
-    get_contractions ?path rewrite
-    |> List.mapi
-         (fun
-           i
-           ((contracted_tensors, single_contraction) :
-             string list list * Single_contraction.t)
-         ->
-           Fmt.(
-             str "Step %i: contract @[%a@] (@[%a@] -> @[%a@]) (%a)" (i + 1)
-               (list string ~sep:sp) single_contraction.contracted
-               (list (list string ~sep:sp) ~sep:comma)
-               contracted_tensors (list string ~sep:sp)
-               single_contraction.preserved
-               (list Single_contraction.Op.pp ~sep:comma)
-               single_contraction.operations))
+  let contraction
+      ((contracted_tensors, single_contraction) :
+        string list list * Single_contraction.t) =
+    Fmt.(
+      str "contract @[%a@] (@[%a@] -> @[%a@]) (%a)" (list string ~sep:sp)
+        single_contraction.contracted
+        (list (list string ~sep:sp) ~sep:comma)
+        contracted_tensors (list string ~sep:sp) single_contraction.preserved
+        (list Single_contraction.Op.pp ~sep:comma)
+        single_contraction.operations)
 
-  let%expect_test "contract_path" =
+  let%expect_test "contraction" =
     let go rewrite path =
-      contract_path ~path rewrite |> Fmt.(list ~sep:sp string) Fmt.stdout
+      get_contractions ~path rewrite
+      |> List.map contraction
+      |> Fmt.(list ~sep:sp string) Fmt.stdout
     in
     let rewrite =
       ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])

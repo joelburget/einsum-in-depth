@@ -73,27 +73,24 @@ let explain container contraction_str path_str =
 
   let f path = function
     | Some rewrite ->
-        let steps = Einops.Explain.contract_path ?path rewrite in
+        let contractions = Einops.Explain.get_contractions ?path rewrite in
+        let steps =
+          List.map
+            (fun contraction ->
+              let drawing =
+                Tensor_diagram.Drawing.draw_contraction contraction
+              in
+              let drawing_elem = Brr.El.div [] in
+              Tensor_diagram.Tensor_diagram.draw drawing_elem drawing;
+              div
+                [ txt' (Einops.Explain.contraction contraction); drawing_elem ])
+            contractions
+        in
         let python_code =
           Einops.Explain.show_loops rewrite
           |> Fmt.to_to_string Einops.Pyloops.pp
         in
-        let diagram_div =
-          div ~at:At.[ id (Jstr.of_string "tensor-diagram") ] []
-        in
-        let children =
-          rewrite |> Tensor_diagram.Drawing.draw_rewrite
-          |> List.map (fun drawing ->
-                 let child = Brr.El.div [] in
-                 Tensor_diagram.Tensor_diagram.draw child drawing;
-                 child)
-        in
-        Brr.El.set_children diagram_div children;
-        [
-          div (steps |> List.map (fun step -> div [ txt' step ]));
-          code [ El.pre [ txt' python_code ] ];
-          diagram_div;
-        ]
+        [ code [ El.pre [ txt' python_code ] ]; div steps ]
     | _ -> [ div [ txt' "TODO" ] ]
   in
 
