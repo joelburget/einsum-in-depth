@@ -117,16 +117,25 @@ end = struct
   open Tensor_playground.Einops
 
   let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
+  let pos n lst = match List.nth_opt lst n with Some x -> [ x ] | None -> []
 
   let draw_contraction (contracted_tensors, Single_contraction.{ contracted; _ })
       =
     (* TODO: handle contracted_tensors of size > 2, and with more than 4 indices *)
+    let left_uncontracted =
+      list_subtraction List.(hd contracted_tensors) contracted
+    in
+    let right_uncontracted =
+      list_subtraction List.(hd (tl contracted_tensors)) contracted
+    in
     let drawing =
       Tensor_diagram.new_diagram ()
       |> Tensor_diagram.add_tensor ~name:"X" ~position:"start" ~right:contracted
-           ~up:(list_subtraction List.(hd contracted_tensors) contracted)
+           ~left:(pos 0 left_uncontracted) ~down:(pos 1 left_uncontracted)
+           ~opts:(Tensor_opts.make ~label_pos:"down" ())
       |> Tensor_diagram.add_tensor ~name:"Y" ~position:"right" ~left:contracted
-           ~up:(list_subtraction List.(hd (tl contracted_tensors)) contracted)
+           ~right:(pos 0 right_uncontracted) ~down:(pos 1 right_uncontracted)
+           ~opts:(Tensor_opts.make ~label_pos:"down" ())
     in
     List.fold_left
       (fun drawing dim_name ->
