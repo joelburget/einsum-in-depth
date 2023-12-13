@@ -134,26 +134,5 @@ end = struct
       drawing contracted
 
   let draw_rewrite rewrite =
-    let contractions = Explain.get_contractions rewrite in
-    List.fold_left
-      (fun drawings (contracted_tensors, Single_contraction.{ contracted; _ }) ->
-        (* TODO: handle contracted_tensors of size > 2, and with more than 4 indices *)
-        let drawing =
-          Tensor_diagram.new_diagram ()
-          |> Tensor_diagram.add_tensor ~name:"X" ~position:"start"
-               ~right:contracted
-               ~up:(list_subtraction List.(hd contracted_tensors) contracted)
-          |> Tensor_diagram.add_tensor ~name:"Y" ~position:"right"
-               ~left:contracted
-               ~up:
-                 (list_subtraction List.(hd (tl contracted_tensors)) contracted)
-        in
-        let drawing =
-          List.fold_left
-            (fun drawing dim_name ->
-              Tensor_diagram.add_contraction 0 1 dim_name drawing)
-            drawing contracted
-        in
-        drawings @ [ drawing ])
-      [] contractions
+    rewrite |> Explain.get_contractions |> List.map draw_contraction
 end
