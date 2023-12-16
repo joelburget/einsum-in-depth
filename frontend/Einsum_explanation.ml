@@ -59,6 +59,8 @@ let validate_inputs :
             ]
         else Ok ()
 
+let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
+
 let explain container contraction_str path_str =
   let result_output = div [] in
   let parse_path s =
@@ -77,13 +79,11 @@ let explain container contraction_str path_str =
         let steps =
           List.map
             (fun contraction ->
-              let drawing =
-                Tensor_diagram.Drawing.draw_contraction contraction
-              in
-              let drawing_elem = Brr.El.div [] in
-              Tensor_diagram.Tensor_diagram.draw drawing_elem drawing;
               div
-                [ txt' (Einops.Explain.contraction contraction); drawing_elem ])
+                [
+                  txt' (Einops.Explain.contraction contraction);
+                  embed_svg (Tensor_diagram.draw_contraction contraction);
+                ])
             contractions
         in
         let python_code =
