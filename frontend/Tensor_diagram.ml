@@ -128,8 +128,9 @@ let draw_contraction (contracted_tensors, Single_contraction.{ contracted; _ })
         let y =
           if n_contracted <= 1 then 0.5
           else
-            start_y
-            +. (ry *. 2.0 *. float_of_int i /. float_of_int (n_contracted - 1))
+            start_y +. 0.05
+            +. (ry -. 0.05) *. 2.0 *. float_of_int i
+               /. float_of_int (n_contracted - 1)
         in
         [ line (0.3, y) (0.7, y); text (0.5, y) name ])
       contracted
