@@ -61,6 +61,11 @@ let validate_inputs :
 
 let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
 
+let mk_button text =
+  let b = El.button [ txt' text ] in
+  let evt = Evr.on_el Ev.click (fun _ -> text) b in
+  (b, evt)
+
 let explain container contraction_str path_str =
   let result_output = div [] in
   let parse_path s =
@@ -69,37 +74,57 @@ let explain container contraction_str path_str =
   let parsed_path_signal, path_input, path_err_elem =
     bracketed_parsed_input parse_path path_str
   in
-  let rewrite_signal, c_input, c_err_elem =
-    parsed_input parse_einsum contraction_str
+  let c_input, input_rewrite_signal = input' contraction_str in
+
+  let f path rewrite =
+    let contractions = Einops.Explain.get_contractions ?path rewrite in
+    let steps =
+      List.map
+        (fun contraction ->
+          div
+            [
+              txt' (Einops.Explain.contraction contraction);
+              embed_svg (Tensor_diagram.draw_contraction contraction);
+            ])
+        contractions
+    in
+    let python_code =
+      Einops.Explain.show_loops rewrite |> Fmt.to_to_string Einops.Pyloops.pp
+    in
+    [ code [ El.pre [ txt' python_code ] ]; div steps ]
   in
 
-  let f path = function
-    | Some rewrite ->
-        let contractions = Einops.Explain.get_contractions ?path rewrite in
-        let steps =
-          List.map
-            (fun contraction ->
-              div
-                [
-                  txt' (Einops.Explain.contraction contraction);
-                  embed_svg (Tensor_diagram.draw_contraction contraction);
-                ])
-            contractions
-        in
-        let python_code =
-          Einops.Explain.show_loops rewrite
-          |> Fmt.to_to_string Einops.Pyloops.pp
-        in
-        [ code [ El.pre [ txt' python_code ] ]; div steps ]
-    | _ -> [ div [ txt' "TODO" ] ]
-  in
+  let b1, evt1 = mk_button "a i j, a j k, a i k ->" in
+  (* inner product *)
+  let b2, evt2 = mk_button "i i ->" in
+  (* matmul *)
+  let b3, evt3 = mk_button "i j, j k -> i k" in
+  (* trace *)
+  let b4, evt4 = mk_button "i i ->" in
+  (* transpose *)
+  let b5, evt5 = mk_button "i j -> j i" in
 
-  let explanation_signal = S.l2 f parsed_path_signal rewrite_signal in
+  let input_evts =
+    E.select [ evt1; evt2; evt3; evt4; evt5; S.changes input_rewrite_signal ]
+  in
+  let current_input = S.hold contraction_str input_evts in
+  let rewrite_signal = S.map parse_einsum current_input in
+
+  let explanation_signal =
+    S.l2
+      (fun path rewrite ->
+        match rewrite with
+        | Ok rewrite -> f path rewrite
+        | Error (msg1, msg2) -> [ txt' msg1; txt' msg2 ])
+      parsed_path_signal rewrite_signal
+  in
 
   Elr.def_children result_output explanation_signal;
+
   set_children container
     [
-      div [ txt' "Contraction: "; c_input; c_err_elem ];
+      div [ txt' "Contraction: "; c_input ];
+      div [ txt' "Choose an example contraction"; b1; b2; b3; b4; b5 ];
       div [ txt' "Path (optional): "; path_input; path_err_elem ];
       result_output;
     ]
