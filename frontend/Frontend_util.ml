@@ -80,13 +80,16 @@ let render_mat items =
   |> List.map (fun items -> items |> List.map Int.to_string |> List.map txt_td)
   |> List.map tr |> tbody
 
-let input' : string -> El.t * string signal =
- fun start_value ->
-  let input_elem = input ~at:[ At.value (Jstr.of_string start_value) ] () in
+let input' : string -> string event -> Logr.t option * El.t * string signal =
+ fun start_value external_update_input ->
+  let input_elem = input () in
   let input_signal, set_input = S.create start_value in
   Evr.endless_listen (as_target input_elem) Ev.change (fun _evt ->
       set_input (Jstr.to_string (prop El.Prop.value input_elem)));
-  (input_elem, input_signal)
+  Elr.set_prop El.Prop.value
+    ~on:(E.map Jstr.of_string external_update_input)
+    input_elem;
+  (E.log external_update_input set_input, input_elem, input_signal)
 
 let parsed_input :
     type a.
