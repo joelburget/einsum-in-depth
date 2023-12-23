@@ -59,11 +59,6 @@ let parse_type str =
   | Ok (ty, bracketed) -> Ok (ty, bracketed)
   | Error (_location, indication, message) -> Error (indication, message)
 
-let parse_einsum str =
-  match Einsum_parser_runner.parse Einsum_parser.Incremental.rewrite str with
-  | Ok rewrite -> Ok rewrite
-  | Error (_location, indication, message) -> Error (indication, message)
-
 let fmt_txt : type a. (a, Format.formatter, unit, El.t) format4 -> a =
  fun fmt -> Fmt.kstr (fun s -> El.txt' s) fmt
 

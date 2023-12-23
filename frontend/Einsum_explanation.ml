@@ -124,12 +124,12 @@ let explain container contraction_str path_str =
   Logr.may_hold logger;
 
   let explanation_signal =
-    current_input |> S.map parse_einsum
+    current_input |> S.map Einsum_parser.parse
     |> S.l2
          (fun path rewrite ->
            match rewrite with
            | Ok rewrite -> f path rewrite
-           | Error (msg1, msg2) -> [ txt' msg1; txt' msg2 ])
+           | Error msg -> [ txt' msg ])
          parsed_path_signal
   in
 

@@ -6,13 +6,6 @@
  (libraries fmt menhirLib))
 
 (menhir
- (modules Einsum_parser)
- (flags --table))
-
-(ocamllex
- (modules Einsum_lexer))
-
-(menhir
  (modules Type_parser)
  (flags --table))
 

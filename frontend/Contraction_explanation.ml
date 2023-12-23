@@ -15,9 +15,9 @@ let of_alist alist = String_map.of_seq (List.to_seq alist)
 let parse_contraction_s :
     string signal -> (El.t list, El.t list) Result.t signal =
   S.map (fun str ->
-      match parse_einsum str with
+      match Einsum_parser.parse str with
       | Ok _einsum -> Result.Ok []
-      | Error (msg1, msg2) -> Error [ txt' msg1; txt' msg2 ])
+      | Error msg -> Error [ txt' msg ])
 
 let list_of_err = function Result.Ok _ -> [] | Error err -> [ err ]
 
@@ -205,7 +205,7 @@ let explain container a_type_str b_type_str contraction_str =
     bracketed_parsed_input parse_type b_type_str
   in
   let contraction_signal, c_input, c_err_elem =
-    parsed_input parse_einsum contraction_str
+    parsed_input Einsum_parser.Parse.parse contraction_str
   in
 
   let f as_opt bs_opt contraction_opt =

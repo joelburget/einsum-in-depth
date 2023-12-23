@@ -1,21 +1,26 @@
-type 'a parser = Lexing.position -> 'a Einsum_parser_runner.I.checkpoint
+type 'a parser = Einsum_parser.Token.t list -> 'a
 
 let parse : type a. a Fmt.t -> a parser -> string -> unit =
  fun pp parser str ->
-  match Einsum_parser_runner.parse parser str with
-  | Ok v -> Fmt.pr "%a@." pp v
-  | Error (location, indication, message) ->
-      Fmt.pr "%s%s%s@." location indication message
+  match Einsum_parser.lex str with
+  | Ok tokens -> Fmt.pr "%a@." pp (parser tokens)
+  | Error msg -> Fmt.pr "%s@." msg
 
 let parse_rewrite : string -> unit =
-  parse Einops.Rewrite.pp Einsum_parser.Incremental.rewrite
+  parse Einops.Rewrite.pp Einsum_parser.rewrite_unsafe
 
-let parse_group : string -> unit =
-  parse Einops.Group.pp Einsum_parser.Incremental.group_top
+let parse_groups : string -> unit =
+  parse
+    Fmt.(box (list ~sep:comma Einops.Group.pp))
+    (fun toks -> toks |> Einsum_parser.groups_unsafe |> fst)
 
 let%expect_test "Groups" =
-  parse_group "a b c";
-  [%expect {| a b c |}]
+  parse_groups "a b c";
+  parse_groups "a b c, d e f";
+  [%expect {|
+    a b c
+    a b c, d e f
+  |}]
 
 let%expect_test "Rewrites" =
   parse_rewrite "a -> a";
@@ -25,11 +30,3 @@ let%expect_test "Rewrites" =
     a -> a
     i, i j -> j
     i, i j -> |}]
-
-let%expect_test "Errors" =
-  parse_rewrite "(";
-  [%expect
-    {|
-    File "", line 1, characters 0-1:
-    Syntax error before '('.
-    Unexpected token. |}]
