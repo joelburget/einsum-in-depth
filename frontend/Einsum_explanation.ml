@@ -59,13 +59,6 @@ let validate_inputs :
             ]
         else Ok ()
 
-let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
-
-let mk_button text =
-  let b = El.button [ txt' text ] in
-  let evt = Evr.on_el Ev.click (fun _ -> text) b in
-  (b, evt)
-
 let parse_path s =
   s |> Path_parser.parse |> Result.map_error (fun msg -> (msg, ""))
 
@@ -93,54 +86,41 @@ let explain container contraction_str path_str =
     [ code [ El.pre [ txt' python_code ] ]; div steps ]
   in
 
-  let b1, evt1 = mk_button "a i j, a j k, a i k ->" in
-  (* inner product *)
-  let b2, evt2 = mk_button "i, i ->" in
-  let b2_5, evt2_5 = mk_button "i j, i j ->" in
-  (* matmul *)
-  let b3, evt3 = mk_button "i j, j k -> i k" in
-  (* trace *)
-  let b4, evt4 = mk_button "i i ->" in
-  (* transpose *)
-  let b5, evt5 = mk_button "i j -> j i" in
-  (* sum *)
-  let b6, evt6 = mk_button "i j ->" in
-  (* column sum *)
-  let b7, evt7 = mk_button "i j -> j" in
-  (* row sum *)
-  let b8, evt8 = mk_button "i j -> i" in
-  (* hadamard product *)
-  let b9, evt9 = mk_button "i j, i j -> i j" in
-  (* outer product *)
-  let b10, evt10 = mk_button "i, j -> i j" in
-  (* batch matmul *)
-  let b11, evt11 = mk_button "b i j, b j k -> b i k" in
-  (* tensor contraction *)
-  let b12, evt12 = mk_button "p q r s, t u q v r -> p s t u v" in
-  (* bilinear transformation *)
-  let b13, evt13 = mk_button "i j, j k l -> i j" in
-
-  let input_evts =
-    E.select
+  let selector, selected_signal =
+    select
       [
-        evt1;
-        evt2;
-        evt2_5;
-        evt3;
-        evt4;
-        evt5;
-        evt6;
-        evt7;
-        evt8;
-        evt9;
-        evt10;
-        evt11;
-        evt12;
-        evt13;
+        "a i j, a j k, a i k ->";
+        (* inner product *)
+        "i, i ->";
+        "i j, i j ->";
+        (* matmul *)
+        "i j, j k -> i k";
+        (* trace *)
+        "i i ->";
+        (* transpose *)
+        "i j -> j i";
+        (* sum *)
+        "i j ->";
+        (* column sum *)
+        "i j -> j";
+        (* row sum *)
+        "i j -> i";
+        (* hadamard product *)
+        "i j, i j -> i j";
+        (* outer product *)
+        "i, j -> i j";
+        (* batch matmul *)
+        "b i j, b j k -> b i k";
+        (* tensor contraction *)
+        "p q r s, t u q v r -> p s t u v";
+        (* bilinear transformation *)
+        "i j, j k l -> i j";
       ]
   in
 
-  let logger, c_input, current_input = input' contraction_str input_evts in
+  let logger, c_input, current_input =
+    input' ~at:input_classes contraction_str (S.changes selected_signal)
+  in
   Logr.may_hold logger;
 
   let explanation_signal =
@@ -157,25 +137,12 @@ let explain container contraction_str path_str =
 
   set_children container
     [
-      div [ txt' "Contraction: "; c_input ];
       div
+        ~at:[ class_ "m-2" ]
         [
-          txt' "Choose an example contraction";
-          b1;
-          b2;
-          b2_5;
-          b3;
-          b4;
-          b5;
-          b6;
-          b7;
-          b8;
-          b9;
-          b10;
-          b11;
-          b12;
-          b13;
+          div [ txt' "Contraction: "; c_input ];
+          div [ txt' "Choose an example contraction"; selector ];
+          div [ txt' "Path (optional): "; path_input; path_err_elem ];
+          result_output;
         ];
-      div [ txt' "Path (optional): "; path_input; path_err_elem ];
-      result_output;
     ]

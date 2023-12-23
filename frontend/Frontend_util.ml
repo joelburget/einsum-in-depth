@@ -41,8 +41,18 @@ let ( code,
       ul,
       li )
 
+let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
+let svg_at name value = Brr_svg.At.v (Jstr.v name) (Jstr.v value)
+let at name value = At.v (Jstr.v name) (Jstr.v value)
 let txt_td str = td [ txt' str ]
-let class_ str = At.(class' (Jstr.of_string str))
+let class_ str = At.class' (Jstr.of_string str)
+let classes str = str |> String.split_on_char ' ' |> List.map class_
+let svg_class str = Brr_svg.At.class' (Jstr.of_string str)
+let svg_classes str = str |> String.split_on_char ' ' |> List.map svg_class
+let type' str = At.type' (Jstr.of_string str)
+let d str = Brr_svg.At.d (Jstr.of_string str)
+let viewbox str = Brr_svg.At.viewbox (Jstr.of_string str)
+let fill str = Brr_svg.At.fill (Jstr.of_string str)
 
 let parse_type str =
   match Type_parser_runner.parse Type_parser.Incremental.lax str with
@@ -80,9 +90,13 @@ let render_mat items =
   |> List.map (fun items -> items |> List.map Int.to_string |> List.map txt_td)
   |> List.map tr |> tbody
 
-let input' : string -> string event -> Logr.t option * El.t * string signal =
- fun start_value external_update_input ->
-  let input_elem = input () in
+let input' :
+    ?at:At.t list ->
+    string ->
+    string event ->
+    Logr.t option * El.t * string signal =
+ fun ?(at = []) start_value external_update_input ->
+  let input_elem = input ~at () in
   let input_signal, set_input = S.create start_value in
   Evr.endless_listen (as_target input_elem) Ev.change (fun _evt ->
       set_input (Jstr.to_string (prop El.Prop.value input_elem)));
@@ -91,13 +105,21 @@ let input' : string -> string event -> Logr.t option * El.t * string signal =
     input_elem;
   (E.log external_update_input set_input, input_elem, input_signal)
 
+let input_classes =
+  classes
+    "block rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 \
+     ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 \
+     focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+
 let parsed_input :
     type a.
     (string -> (a, string * string) result) ->
     string ->
     a option signal * El.t * El.t =
  fun parse start_value ->
-  let input_elem = input ~at:[ At.value (Jstr.of_string start_value) ] () in
+  let input_elem =
+    input ~at:([ At.value (Jstr.of_string start_value) ] @ input_classes) ()
+  in
   let parse_error_elem = div [] in
 
   let input_signal, set_input = S.create start_value in
@@ -150,3 +172,155 @@ let result_list : ('a, 'e) result list -> ('a list, 'e) result =
     | Error e :: _ -> Error e
   in
   loop results
+
+module Select = struct
+  let chevrons_svg =
+    let open Brr_svg in
+    let open El in
+    svg
+      ~at:
+        (svg_classes "h-5 w-5 text-gray-400"
+        @ [ svg_at "aria-hidden" "true" ]
+        @ [ viewbox "0 0 20 20"; fill "currentColor" ])
+      [
+        path
+          ~at:
+            ([
+               d
+                 "M10 3a.75.75 0 01.55.24l3.25 3.5a.75.75 0 11-1.1 1.02L10 \
+                  4.852 7.3 7.76a.75.75 0 01-1.1-1.02l3.25-3.5A.75.75 0 0110 \
+                  3zm-3.76 9.2a.75.75 0 011.06.04l2.7 2.908 2.7-2.908a.75.75 0 \
+                  111.1 1.02l-3.25 3.5a.75.75 0 01-1.1 0l-3.25-3.5a.75.75 0 \
+                  01.04-1.06z";
+             ]
+            @ [ svg_at "fill-rule" "evenodd"; svg_at "clip-rule" "evenodd" ])
+          [];
+      ]
+
+  let checkmark_svg =
+    let open Brr_svg in
+    let open El in
+    svg
+      ~at:
+        (svg_classes "h-5 w-5"
+        @ [ svg_at "aria-hidden" "true" ]
+        @ [ viewbox "0 0 20 20"; fill "currentColor" ])
+      [
+        path
+          ~at:
+            ([
+               d
+                 "M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 \
+                  01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 \
+                  7.48-9.817a.75.75 0 011.05-.143z";
+             ]
+            @ [ svg_at "fill-rule" "evenodd"; svg_at "clip-rule" "evenodd" ])
+          [];
+      ]
+
+  let select items =
+    let selected_signal, set_selected = S.create 0 in
+    let dropdown_open_signal, set_dropdown_open = S.create false in
+    let selected_item = selected_signal |> S.map (fun i -> List.nth items i) in
+
+    let button =
+      let selected_span = span ~at:(classes "block truncate") [] in
+      Elr.def_children selected_span
+        (selected_item |> S.map (fun i -> [ txt' i ]));
+      let button =
+        El.button
+          ~at:
+            ([
+               type' "button";
+               at "aria-haspopup" "listbox";
+               at "aria-expanded" "true";
+               at "aria-labelledby" "listbox-label";
+             ]
+            @ classes
+                "relative w-full cursor-default rounded-md bg-white py-1.5 \
+                 pl-3 pr-10 text-left text-gray-900 shadow-sm ring-1 \
+                 ring-inset ring-gray-300 focus:outline-none focus:ring-2 \
+                 focus:ring-indigo-600 sm:text-sm sm:leading-6")
+          El.
+            [
+              selected_span;
+              span
+                ~at:
+                  (classes
+                     "pointer-events-none absolute inset-y-0 right-0 flex \
+                      items-center pr-2")
+                [ embed_svg chevrons_svg ];
+            ]
+      in
+      let _ =
+        Ev.listen Ev.click
+          (* TODO: this seems like the wrong way to do this -- should just emit a toggle event? *)
+            (fun _ -> set_dropdown_open (not (S.value dropdown_open_signal)))
+          (El.as_target button)
+      in
+      button
+    in
+
+    let checkmark =
+      span
+        ~at:
+          (classes
+             "text-indigo-600 absolute inset-y-0 right-0 flex items-center pr-4")
+        [ embed_svg checkmark_svg ]
+    in
+
+    let item i name =
+      let elem =
+        li
+          ~at:
+            (classes
+               "text-gray-900 relative cursor-default select-none py-2 pl-3 \
+                pr-9"
+            @ [ at "role" "option" ])
+          []
+      in
+      let text_child = span ~at:(classes "block truncate") [ txt' name ] in
+      let is_selected_s = selected_signal |> S.map (fun i' -> i = i') in
+      let evt = Evr.on_el Ev.click (fun _ -> i) elem in
+      Elr.def_class (Jstr.v "font-normal") is_selected_s elem;
+      Elr.def_class (Jstr.v "font-semibold") is_selected_s elem;
+      Elr.def_children elem
+        (is_selected_s
+        |> S.map (fun is_selected ->
+               if is_selected then (
+                 print_endline "selected";
+                 [ text_child; checkmark ])
+               else [ text_child ]));
+      (evt, elem)
+    in
+
+    let list_evts, list_elems = List.split (List.mapi item items) in
+    Logr.may_hold
+      E.(
+        log (select list_evts) (fun i ->
+            set_selected i;
+            set_dropdown_open false));
+
+    let list =
+      ul
+        ~at:
+          (classes
+             "absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md \
+              bg-white py-1 text-base shadow-lg ring-1 ring-black \
+              ring-opacity-5 focus:outline-none sm:text-sm"
+          @ [
+              At.tabindex (-1);
+              at "role" "listbox";
+              at "aria-labelledby" "listbox-label";
+            ])
+        list_elems
+    in
+
+    let result_elem = El.div [] in
+    Elr.def_children result_elem
+      (dropdown_open_signal
+      |> S.map (fun open' -> if open' then [ button; list ] else [ button ]));
+    (result_elem, selected_item)
+end
+
+let select items = Select.select items
