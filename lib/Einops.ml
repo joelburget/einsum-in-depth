@@ -503,18 +503,18 @@ end = struct
     go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract k (a j k, a i k -> a i j) ()
-      Step 2: contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
+      contract k (a j k, a i k -> a i j) ()
+      contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     go rewrite [ [ 0; 1 ]; [ 0; 1 ] ];
     [%expect
       {|
-      Step 1: contract j (a i j, a j k -> a i k) ()
-      Step 2: contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
+      contract j (a i j, a j k -> a i k) ()
+      contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
     go rewrite [ [ 0; 1 ] ];
-    [%expect {| Step 1: contract k (i k, k j -> i j) (matmul) |}]
+    [%expect {| contract k (i k, k j -> i j) (matmul) |}]
 
   let show_loops rewrite =
     let lhs_tensors, rhs_tensor = rewrite in
