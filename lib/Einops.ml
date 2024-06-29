@@ -469,10 +469,6 @@ end
    Unpack 1 1 -> 1
  *)
 module General_matmul : sig
-  type instruction = 
-    | View of (string list) list
-    | Squeeze of int
-
   type packed = {
     batch_dims: string list;
     matrix: string list * string list;
@@ -480,18 +476,16 @@ module General_matmul : sig
 
   type t = {
     pack: packed * packed;
-    pack_l_instructions: instruction list;
-    pack_r_instructions: instruction list;
+    view_l: (string list) list;
+    view_r: (string list) list;
     matmul: string list * string list * string list;
-    unpack_instructions: instruction list;
+    unpack_squeeze: int list;
   }
 
   val explain: string list -> string list -> string list -> t
+  
+  val pp_expr : t Fmt.t
 end = struct
-  type instruction = 
-    | View of (string list) list
-    | Squeeze of int
-
   type packed = {
     batch_dims: string list;
     matrix: string list * string list;
@@ -499,13 +493,27 @@ end = struct
 
   type t = {
     pack: packed * packed;
-    pack_l_instructions: instruction list;
-    pack_r_instructions: instruction list;
+    view_l: (string list) list;
+    view_r: (string list) list;
     matmul: string list * string list * string list;
-    unpack_instructions: instruction list;
+    unpack_squeeze: int list;
   }
 
   module SS = String_set
+
+  let squeeze ppf i = Fmt.pf ppf ".squeeze(%d)" i
+
+  let shape_slot ppf strs = match strs with
+    | [] -> Fmt.pf ppf "1"
+    | _ -> Fmt.(list ~sep:(any " * ") string) ppf strs
+  let shape = Fmt.(parens (list ~sep:comma shape_slot))
+
+  let pp_expr ppf { view_l; view_r; unpack_squeeze; _ } =
+    Fmt.(pf ppf "torch.matmul(@[<hov 2>x.view%a,@ y.view%a@])%a"
+      shape view_l
+      shape view_r
+      (list squeeze) unpack_squeeze
+    )
 
   let explain input_l input_r output = 
     let input_l_s, input_r_s, output_s = SS.(of_list input_l, of_list input_r, of_list output) in
@@ -536,23 +544,22 @@ end = struct
     (* Preserve batch dimensions, preserve unique axes on both sides *)
     let matmul = batch_dims, left_only_input, right_only_input in
 
-    let pack_l_instructions = [View 
+    let view_l = 
       ((List.map (fun x -> [x]) batch_dims) @ [left_only_input; contracted])
-    ] in
-    let pack_r_instructions = [View 
+    in
+    let view_r = 
       ((List.map (fun x -> [x]) batch_dims) @ [contracted; right_only_input])
-    ] in
+    in
 
     let n_batch_dims = List.length batch_dims in
-    let dims_to_squeeze = match left_only_input, right_only_input with
+    let unpack_squeeze = match left_only_input, right_only_input with
       | [], [] -> [n_batch_dims + 1; n_batch_dims]
       | l, [] -> [n_batch_dims + List.length l]
       | [], _ -> [n_batch_dims]
       | _, _ -> []
     in
-    let unpack_instructions = dims_to_squeeze |> List.map (fun dim -> Squeeze dim) in
 
-    { pack; pack_l_instructions; pack_r_instructions; matmul; unpack_instructions }
+    { pack; view_l; view_r; matmul; unpack_squeeze }
 
   let%expect_test "General_matmul" =
     let fmt_axis ppf strs = match strs with
@@ -567,37 +574,28 @@ end = struct
       | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z) 
       | _ -> Fmt.(pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y fmt_axis z)
     in
-    let shape_slot ppf strs = match strs with
-      | [] -> Fmt.pf ppf "1"
-      | _ -> Fmt.(list ~sep:(any " * ") string) ppf strs
-    in
-    let shape = Fmt.(parens (list ~sep:comma shape_slot)) in
-    let instruction ppf = Fmt.(function
-      | View sh -> pf ppf "@[View %a@]" shape sh
-      | Squeeze i -> pf ppf "@[Squeeze %d@]" i
-    )
-    in
+    let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
     let go input_l input_r output =
-      let { pack; pack_l_instructions; pack_r_instructions; matmul; unpack_instructions } = explain input_l input_r output in
+      let { pack; view_l; view_r; matmul; unpack_squeeze } = explain input_l input_r output in
       Fmt.pr "Pack:@.";
-      Fmt.(pr "  @[%a: %a -> %a@]@." 
-        (brackets (list ~sep:semi instruction)) 
-        pack_l_instructions 
+      Fmt.(pr "  @[View %a: %a -> %a@]@." 
+        shape
+        view_l
         (list ~sep:sp string) 
         input_l 
         fmt_pack 
         (fst pack));
-      Fmt.(pr "  @[%a: %a -> %a@]@." 
-        (brackets (list ~sep:semi instruction)) 
-        pack_r_instructions 
+      Fmt.(pr "  @[View %a: %a -> %a@]@." 
+        shape
+        view_r
         (list ~sep:sp string) 
         input_r 
         fmt_pack 
         (snd pack));
       Fmt.pr "Unpack:@.";
       Fmt.(pr "  @[%a: %a -> %a@]@." 
-        (brackets (list ~sep:semi instruction)) 
-        unpack_instructions 
+        (brackets (list ~sep:semi squeeze)) 
+        unpack_squeeze 
         fmt_matmul 
         matmul
         (list ~sep:sp string)
@@ -608,8 +606,8 @@ end = struct
     [%expect
       {|
         Pack:
-          [View (a, 1, b)]: a b -> a 1 b
-          [View (a, b, 1)]: b a -> a b 1
+          View (a, 1, b): a b -> a 1 b
+          View (a, b, 1): b a -> a b 1
         Unpack:
           [Squeeze 2; Squeeze 1]: a 1 1 -> a
       |}];
@@ -617,8 +615,8 @@ end = struct
    [%expect
      {|
        Pack: 
-         [View (a, c, b)]: a b c -> a c b
-         [View (a, b, d)]: a b d -> a b d
+         View (a, c, b): a b c -> a c b
+         View (a, b, d): a b d -> a b d
        Unpack:
          []: a c d -> a c d
     |}];
@@ -626,8 +624,8 @@ end = struct
   [%expect
     {|
        Pack: 
-         [View (1, a * b)]: a b -> 1 (a b)
-         [View (a * b, 1)]: b a -> (a b) 1
+         View (1, a * b): a b -> 1 (a b)
+         View (a * b, 1): b a -> (a b) 1
        Unpack:
          [Squeeze 1; Squeeze 0]: 1 1 ->
     |}]
@@ -677,17 +675,24 @@ end = struct
     |> snd
 
   let contraction
-      ((contracted_tensors, single_contraction) :
+      (((l_tensor, r_tensor), single_contraction) :
         (string list * string list) * Single_contraction.t) =
+    let general_matmul =
+      General_matmul.explain l_tensor r_tensor single_contraction.preserved (* TODO: is "preserved" the same as output? *)
+    in
     Fmt.(
-      str "contract @[%a@] (@[%a@] -> @[%a@]) (%a)" 
+      str "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" 
         (list string ~sep:sp)
         single_contraction.contracted
-        (pair (list string ~sep:sp) (list string ~sep:sp) ~sep:comma)
-        contracted_tensors 
+        (list string ~sep:sp) 
+        l_tensor
+        (list string ~sep:sp)
+        r_tensor
         (list string ~sep:sp) single_contraction.preserved
-        (list Single_contraction.Op.pp ~sep:comma)
-        single_contraction.operations)
+        General_matmul.pp_expr
+        general_matmul)
+        (* (list Single_contraction.Op.pp ~sep:comma)
+        single_contraction.operations *)
 
   let%expect_test "contraction" =
     let go rewrite path =
@@ -701,18 +706,24 @@ end = struct
     go rewrite [ (1, 2); (0, 1) ];
     [%expect
       {|
-      contract k (a j k, a i k -> a i j) ()
-      contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
+      contract k (a j k, a i k -> a i j) 
+        (torch.matmul(x.view(a, j, k), y.view(a, k, i)))
+      contract a i j (a i j, a i j -> ) 
+        (torch.matmul(x.view(1, a * i * j), y.view(a * i * j, 1)).squeeze(1)
+        .squeeze(0))
       |}];
     go rewrite [ (0, 1); (0, 1) ];
     [%expect
       {|
-      contract j (a i j, a j k -> a i k) ()
-      contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
+      contract j (a i j, a j k -> a i k) 
+        (torch.matmul(x.view(a, i, j), y.view(a, j, k)))
+      contract a i k (a i k, a i k -> ) 
+        (torch.matmul(x.view(1, a * i * k), y.view(a * i * k, 1)).squeeze(1)
+        .squeeze(0))
       |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
     go rewrite [ (0, 1) ];
-    [%expect {| contract k (i k, k j -> i j) (matmul) |}]
+    [%expect {| contract k (i k, k j -> i j) (torch.matmul(x.view(i, k), y.view(k, j))) |}]
 
   let show_loops rewrite =
     let lhs_tensors, rhs_tensor = rewrite in
