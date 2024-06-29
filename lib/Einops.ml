@@ -116,8 +116,6 @@ module Single_contraction : sig
      [eventual_result]. *)
   val get_result : string list list -> string list list -> string list -> t
 end = struct
-  module String_set = Set.Make (String)
-
   module Op = struct
     type t =
       | Tensordot1 of int
@@ -436,6 +434,193 @@ module Pyloops = struct
     match rhs_tensor with
     | [] -> Fmt.pf ppf "return total@."
     | _ -> Fmt.pf ppf "return result@."
+end
+
+(** The contraction of two tensors as a generalized matmul.
+
+ Example "a b c, a b d -> a c d":
+   
+   Contract (multiply along axis): b
+   Zip (batch axis): a
+   Leave (unique to one side): c d
+   
+   Steps:
+   1. Pack tensors (a b c -> a c d)
+   2. Perform matmul
+   
+        a c b
+        a b d
+     -> a c d
+   
+   3. Unpack (squeeze): a c b -> a c b
+
+ Example a b, b a -> a
+   Pack: 
+     a 1 b
+     a b 1
+   Matmul -> a 1 1
+   Unpack a 1 1 -> a
+
+ Example a b, b a ->
+   Pack: 
+     1 (a b)
+     (a b) 1
+   Matmul -> 1 1
+   Unpack 1 1 -> 1
+ *)
+module General_matmul : sig
+  type instruction = 
+    | Permute of int list 
+    | View of string list
+    | Unsqueeze of int 
+    | Squeeze of int
+
+  type packed = {
+    batch_dims: string list;
+    matrix: string list * string list;
+  }
+
+  type t = {
+    pack: packed * packed;
+    pack_l_instructions: instruction list;
+    pack_r_instructions: instruction list;
+    matmul: string list * string list * string list;
+    unpack_instructions: instruction list;
+  }
+
+  val explain: string list -> string list -> string list -> t
+end = struct
+  type instruction = 
+    | Permute of int list 
+    | View of string list
+    | Unsqueeze of int 
+    | Squeeze of int
+
+  type packed = {
+    batch_dims: string list;
+    matrix: string list * string list;
+  }
+
+  type t = {
+    pack: packed * packed;
+    pack_l_instructions: instruction list;
+    pack_r_instructions: instruction list;
+    matmul: string list * string list * string list;
+    unpack_instructions: instruction list;
+  }
+
+  module SS = String_set
+
+  let explain input_l input_r output = 
+    let input_l_s, input_r_s, output_s = SS.(of_list input_l, of_list input_r, of_list output) in
+
+    let common_inputs = SS.inter input_l_s input_r_s in
+
+    (* Contract (matmul) axes which appear on both inputs but not the output *)
+    let contracted = SS.diff common_inputs output_s |> SS.elements in
+
+    (* Zip (batch) axes which are common to both inputs and the output *)
+    let zipped = SS.inter common_inputs output_s |> SS.elements in
+
+    (* Axes which appear only on the left so will appear in the left matrix *)
+    let left_only_input = SS.diff input_l_s common_inputs |> SS.elements in
+
+    (* Axes which appear only on the right so will appear in the right matrix *)
+    let right_only_input = SS.diff input_r_s common_inputs |> SS.elements in
+
+    let pack = 
+      { batch_dims = zipped
+      ; matrix = (left_only_input, contracted)
+      },
+      { batch_dims = zipped
+      ; matrix = (contracted, right_only_input)
+      }
+    in
+
+    (* Preserve batch dimensions, preserve unique axes on both sides *)
+    let matmul = zipped, left_only_input, right_only_input in
+
+    let pack_l_instructions = [] in
+    let pack_r_instructions = [] in
+    let unpack_instructions = [] in
+
+    { pack; pack_l_instructions; pack_r_instructions; matmul; unpack_instructions }
+
+  let%expect_test "General_matmul" =
+    let fmt_axis ppf strs = match strs with
+      | [] -> Fmt.pf ppf "1"
+      | [a] -> Fmt.string ppf a
+      | _ -> Fmt.(parens (list ~sep:sp string)) ppf strs
+    in
+    let fmt_pack ppf {batch_dims; matrix = (l, r)} = match batch_dims with
+      | [] -> Fmt.(pf ppf "%a %a" fmt_axis l fmt_axis r)
+      | _ -> Fmt.(pf ppf "%a %a %a" (list ~sep:sp string) batch_dims fmt_axis l fmt_axis r) in
+    let fmt_matmul ppf (batch_dims, y, z) = match batch_dims with 
+      | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z) 
+      | _ -> Fmt.(pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y fmt_axis z)
+    in
+    let shape = Fmt.(parens (list ~sep:comma string)) in
+    let instruction ppf = Fmt.(function
+      | Permute ns -> pf ppf "@[Permute %a@]" (parens (list ~sep:comma int)) ns
+      | View sh -> pf ppf "@[View %a@]" shape sh
+      | Unsqueeze i -> pf ppf "@[Unsqueeze %d@]" i
+      | Squeeze i -> pf ppf "@[Sqeeze %d@]" i
+    )
+    in
+    let go input_l input_r output =
+      let { pack; pack_l_instructions; pack_r_instructions; matmul; unpack_instructions } = explain input_l input_r output in
+      Fmt.pr "Pack:\n";
+      Fmt.(pr "  @[%a: %a -> %a@]\n" 
+        (brackets (list ~sep:semi instruction)) 
+        pack_l_instructions 
+        (list ~sep:sp string) 
+        input_l 
+        fmt_pack 
+        (fst pack));
+      Fmt.(pr "  @[%a: %a -> %a@]\n" 
+        (brackets (list ~sep:semi instruction)) 
+        pack_r_instructions 
+        (list ~sep:sp string) 
+        input_r 
+        fmt_pack 
+        (snd pack));
+      Fmt.pr "Unpack:\n";
+      Fmt.(pr "  @[%a: %a -> %a@]\n" 
+        (brackets (list ~sep:semi instruction)) 
+        unpack_instructions 
+        fmt_matmul 
+        matmul
+        (list ~sep:sp string)
+        output
+        );
+    in
+    go ["a"; "b"] ["b"; "a"] ["a"];
+    [%expect
+      {|
+        Pack:
+          [Unsqueeze 1]: a b -> a 1 b
+          [Unsqueeze 1]: b a -> a b 1
+        Unpack:
+          [Squeeze 2; Sqeeze 1]: a 1 1 -> a
+      |}];
+   go ["a"; "b"; "c"] ["a"; "b"; "d"] ["a"; "c"; "d"];
+   [%expect
+     {|
+       Pack: 
+         [Permute (0, 2, 1)]: a b c -> a c b
+         []: a b d -> a b d
+       Unpack:
+         []: a c d -> a c d
+    |}];
+  go ["a"; "b"] ["b"; "a"] [];
+  [%expect
+    {|
+       Pack: 
+         [View (a, b); Unsqueeze 0]: a b -> 1 (a b)
+         [View (a, b); Unsqueeze 1]: b a -> (a b) 1
+       Unpack:
+         [Squeeze 0]: 1 1 -> 1
+    |}]
 end
 
 module Explain : sig
