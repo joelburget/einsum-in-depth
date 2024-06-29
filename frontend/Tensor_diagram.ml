@@ -69,13 +69,13 @@ let draw_radial_lines (x, y) names is_rhs =
 let tensor (x', y') (rx', ry') label =
   [ ellipse' (x', y') (rx', ry'); text (x' +. rx', y' -. ry') label ]
 
-let draw_contraction (contracted_tensors, Single_contraction.{ contracted; _ })
+let draw_contraction ((l_tensor, r_tensor), Single_contraction.{ contracted; _ })
     =
   let left_uncontracted : string list =
-    list_subtraction List.(hd contracted_tensors) contracted
+    list_subtraction l_tensor contracted
   in
   let right_uncontracted : string list =
-    list_subtraction List.(hd (tl contracted_tensors)) contracted
+    list_subtraction r_tensor contracted
   in
   let left_lines = draw_radial_lines (0.3, 0.5) left_uncontracted false in
   let right_lines = draw_radial_lines (0.7, 0.5) right_uncontracted true in

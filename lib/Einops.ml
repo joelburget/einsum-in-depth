@@ -634,13 +634,13 @@ end = struct
 end
 
 module Explain : sig
-  val contraction : string list list * Single_contraction.t -> string
+  val contraction : (string list * string list) * Single_contraction.t -> string
   (** Explain a single contraction step *)
 
   val get_contractions :
-    ?path:int list list ->
+    ?path:(int * int) list ->
     Rewrite.t ->
-    (string list list * Single_contraction.t) list
+    ((string list * string list) * Single_contraction.t) list
   (** Get the contractions along the given path. *)
 
   val show_loops : Rewrite.t -> Pyloops.t
@@ -650,25 +650,26 @@ end = struct
     let n_tensors = List.length bindings in
     let path =
       match path with
-      | Some [] | None -> List.init (n_tensors - 1) (fun _ -> [ 0; 1 ])
+      | Some [] | None -> List.init (n_tensors - 1) (fun _ -> ( 0, 1 ))
       | Some path -> path
     in
     path
     |> List.fold_left
-         (fun (tensors, steps) ixs ->
-           let contracted_tensors = List.map (List.nth tensors) ixs in
+         (fun (tensors, steps) (ixl, ixr) ->
+           let contracted_tensors = (List.nth tensors ixl, List.nth tensors ixr) in
+           let contracted_tensors_ = [List.nth tensors ixl; List.nth tensors ixr] in
            let new_tensors =
-             List.fold_right Util.delete_from_list ixs tensors
+             List.fold_right Util.delete_from_list [ixl; ixr] tensors
            in
            let single_contraction =
-             Single_contraction.get_result contracted_tensors new_tensors
+             Single_contraction.get_result contracted_tensors_ new_tensors
                result_group
            in
            let new_tensors =
              List.append new_tensors [ single_contraction.preserved ]
            in
            let step =
-             Single_contraction.get_result contracted_tensors new_tensors
+             Single_contraction.get_result contracted_tensors_ new_tensors
                result_group
            in
            (new_tensors, List.append steps [ (contracted_tensors, step) ]))
@@ -677,12 +678,14 @@ end = struct
 
   let contraction
       ((contracted_tensors, single_contraction) :
-        string list list * Single_contraction.t) =
+        (string list * string list) * Single_contraction.t) =
     Fmt.(
-      str "contract @[%a@] (@[%a@] -> @[%a@]) (%a)" (list string ~sep:sp)
+      str "contract @[%a@] (@[%a@] -> @[%a@]) (%a)" 
+        (list string ~sep:sp)
         single_contraction.contracted
-        (list (list string ~sep:sp) ~sep:comma)
-        contracted_tensors (list string ~sep:sp) single_contraction.preserved
+        (pair (list string ~sep:sp) (list string ~sep:sp) ~sep:comma)
+        contracted_tensors 
+        (list string ~sep:sp) single_contraction.preserved
         (list Single_contraction.Op.pp ~sep:comma)
         single_contraction.operations)
 
@@ -695,20 +698,20 @@ end = struct
     let rewrite =
       ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
     in
-    go rewrite [ [ 1; 2 ]; [ 0; 1 ] ];
+    go rewrite [ (1, 2); (0, 1) ];
     [%expect
       {|
       contract k (a j k, a i k -> a i j) ()
       contract a i j (a i j, a i j -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
-    go rewrite [ [ 0; 1 ]; [ 0; 1 ] ];
+    go rewrite [ (0, 1); (0, 1) ];
     [%expect
       {|
       contract j (a i j, a j k -> a i k) ()
       contract a i k (a i k, a i k -> ) (tensordot [(0, 0), (2, 2), (1, 1)])
       |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
-    go rewrite [ [ 0; 1 ] ];
+    go rewrite [ (0, 1) ];
     [%expect {| contract k (i k, k j -> i j) (matmul) |}]
 
   let show_loops rewrite =
