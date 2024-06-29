@@ -470,9 +470,7 @@ end
  *)
 module General_matmul : sig
   type instruction = 
-    | Permute of int list 
-    | View of string list
-    | Unsqueeze of int 
+    | View of (string list) list
     | Squeeze of int
 
   type packed = {
@@ -491,9 +489,7 @@ module General_matmul : sig
   val explain: string list -> string list -> string list -> t
 end = struct
   type instruction = 
-    | Permute of int list 
-    | View of string list
-    | Unsqueeze of int 
+    | View of (string list) list
     | Squeeze of int
 
   type packed = {
@@ -520,7 +516,7 @@ end = struct
     let contracted = SS.diff common_inputs output_s |> SS.elements in
 
     (* Zip (batch) axes which are common to both inputs and the output *)
-    let zipped = SS.inter common_inputs output_s |> SS.elements in
+    let batch_dims = SS.inter common_inputs output_s |> SS.elements in
 
     (* Axes which appear only on the left so will appear in the left matrix *)
     let left_only_input = SS.diff input_l_s common_inputs |> SS.elements in
@@ -529,20 +525,32 @@ end = struct
     let right_only_input = SS.diff input_r_s common_inputs |> SS.elements in
 
     let pack = 
-      { batch_dims = zipped
+      { batch_dims
       ; matrix = (left_only_input, contracted)
       },
-      { batch_dims = zipped
+      { batch_dims
       ; matrix = (contracted, right_only_input)
       }
     in
 
     (* Preserve batch dimensions, preserve unique axes on both sides *)
-    let matmul = zipped, left_only_input, right_only_input in
+    let matmul = batch_dims, left_only_input, right_only_input in
 
-    let pack_l_instructions = [] in
-    let pack_r_instructions = [] in
-    let unpack_instructions = [] in
+    let pack_l_instructions = [View 
+      ((List.map (fun x -> [x]) batch_dims) @ [left_only_input; contracted])
+    ] in
+    let pack_r_instructions = [View 
+      ((List.map (fun x -> [x]) batch_dims) @ [contracted; right_only_input])
+    ] in
+
+    let n_batch_dims = List.length batch_dims in
+    let dims_to_squeeze = match left_only_input, right_only_input with
+      | [], [] -> [n_batch_dims + 1; n_batch_dims]
+      | l, [] -> [n_batch_dims + List.length l]
+      | [], _ -> [n_batch_dims]
+      | _, _ -> []
+    in
+    let unpack_instructions = dims_to_squeeze |> List.map (fun dim -> Squeeze dim) in
 
     { pack; pack_l_instructions; pack_r_instructions; matmul; unpack_instructions }
 
@@ -559,33 +567,35 @@ end = struct
       | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z) 
       | _ -> Fmt.(pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y fmt_axis z)
     in
-    let shape = Fmt.(parens (list ~sep:comma string)) in
+    let shape_slot ppf strs = match strs with
+      | [] -> Fmt.pf ppf "1"
+      | _ -> Fmt.(list ~sep:(any " * ") string) ppf strs
+    in
+    let shape = Fmt.(parens (list ~sep:comma shape_slot)) in
     let instruction ppf = Fmt.(function
-      | Permute ns -> pf ppf "@[Permute %a@]" (parens (list ~sep:comma int)) ns
       | View sh -> pf ppf "@[View %a@]" shape sh
-      | Unsqueeze i -> pf ppf "@[Unsqueeze %d@]" i
-      | Squeeze i -> pf ppf "@[Sqeeze %d@]" i
+      | Squeeze i -> pf ppf "@[Squeeze %d@]" i
     )
     in
     let go input_l input_r output =
       let { pack; pack_l_instructions; pack_r_instructions; matmul; unpack_instructions } = explain input_l input_r output in
-      Fmt.pr "Pack:\n";
-      Fmt.(pr "  @[%a: %a -> %a@]\n" 
+      Fmt.pr "Pack:@.";
+      Fmt.(pr "  @[%a: %a -> %a@]@." 
         (brackets (list ~sep:semi instruction)) 
         pack_l_instructions 
         (list ~sep:sp string) 
         input_l 
         fmt_pack 
         (fst pack));
-      Fmt.(pr "  @[%a: %a -> %a@]\n" 
+      Fmt.(pr "  @[%a: %a -> %a@]@." 
         (brackets (list ~sep:semi instruction)) 
         pack_r_instructions 
         (list ~sep:sp string) 
         input_r 
         fmt_pack 
         (snd pack));
-      Fmt.pr "Unpack:\n";
-      Fmt.(pr "  @[%a: %a -> %a@]\n" 
+      Fmt.pr "Unpack:@.";
+      Fmt.(pr "  @[%a: %a -> %a@]@." 
         (brackets (list ~sep:semi instruction)) 
         unpack_instructions 
         fmt_matmul 
@@ -598,17 +608,17 @@ end = struct
     [%expect
       {|
         Pack:
-          [Unsqueeze 1]: a b -> a 1 b
-          [Unsqueeze 1]: b a -> a b 1
+          [View (a, 1, b)]: a b -> a 1 b
+          [View (a, b, 1)]: b a -> a b 1
         Unpack:
-          [Squeeze 2; Sqeeze 1]: a 1 1 -> a
+          [Squeeze 2; Squeeze 1]: a 1 1 -> a
       |}];
    go ["a"; "b"; "c"] ["a"; "b"; "d"] ["a"; "c"; "d"];
    [%expect
      {|
        Pack: 
-         [Permute (0, 2, 1)]: a b c -> a c b
-         []: a b d -> a b d
+         [View (a, c, b)]: a b c -> a c b
+         [View (a, b, d)]: a b d -> a b d
        Unpack:
          []: a c d -> a c d
     |}];
@@ -616,10 +626,10 @@ end = struct
   [%expect
     {|
        Pack: 
-         [View (a, b); Unsqueeze 0]: a b -> 1 (a b)
-         [View (a, b); Unsqueeze 1]: b a -> (a b) 1
+         [View (1, a * b)]: a b -> 1 (a b)
+         [View (a * b, 1)]: b a -> (a b) 1
        Unpack:
-         [Squeeze 0]: 1 1 -> 1
+         [Squeeze 1; Squeeze 0]: 1 1 ->
     |}]
 end
 
