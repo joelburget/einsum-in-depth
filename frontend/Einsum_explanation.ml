@@ -83,7 +83,12 @@ let explain container contraction_str path_str =
     let python_code =
       Einops.Explain.show_loops rewrite |> Fmt.to_to_string Einops.Pyloops.pp
     in
-    [ code [ El.pre [ txt' python_code ] ]; div steps ]
+    [
+      p [ txt' "First, we give the equivalent Python code" ];
+      code [ El.pre [ txt' python_code ] ];
+      p [ txt' "Next, we show the steps of the contraction, one by one" ];
+      div steps;
+    ]
   in
 
   let selector, selected_signal =
@@ -140,8 +145,11 @@ let explain container contraction_str path_str =
       div
         ~at:[ class_ "m-2" ]
         [
-          div [ txt' "Contraction: "; c_input ];
-          div [ txt' "Choose an example contraction"; selector ];
+          div ~at:(classes "flex flex-row")
+            [
+              div [ txt' "Enter a contraction: "; c_input ];
+              div [ txt' "Or choose an example: "; selector ];
+            ];
           div [ txt' "Path (optional): "; path_input; path_err_elem ];
           result_output;
         ];

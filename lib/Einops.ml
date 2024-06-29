@@ -110,7 +110,7 @@ module Single_contraction : sig
   }
 
   (* [get_result contracted_tensors other_tensors eventual_result] returns the
-     result of a single contraction, given the (names of the indices of) the
+     result of a single contraction, given the (names of the) indices of the
      [contracted_tensors], the names of the indices of the other tensors
      [other_tensors], and the names of the indices of the eventual result
      [eventual_result]. *)
