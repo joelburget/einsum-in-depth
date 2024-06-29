@@ -1,6 +1,6 @@
 open Tensor_playground
 open Brr
-open Brr_note
+open Note_brr
 open Note
 module String_set = Set.Make (String)
 module String_map = Map.Make (String)

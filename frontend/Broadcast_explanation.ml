@@ -1,5 +1,5 @@
 open Brr
-open Brr_note
+open Note_brr
 open Tensor_playground
 open Note
 open Frontend_util

@@ -12,7 +12,7 @@
   Vector_matrix_explanation)
  (js_of_ocaml
   (javascript_files isometric.js))
- (libraries brr brr_svg brr.note fmt note tensor_playground))
+ (libraries brr brr_svg fmt note note.brr tensor_playground))
 
 (rule
  (targets tensor_playground_web.js)
