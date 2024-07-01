@@ -2,16 +2,18 @@ open Tensor_playground.Einops
 
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
 
+let float f = Jstr.v (string_of_float f)
+
 let line ?(color' = "hsl(203.42deg 92.41% 69.02%)") (x1', y1') (x2', y2') =
   let open Brr_svg in
   El.line
     ~at:
       At.
         [
-          x1 (Jstr.v (string_of_float x1'));
-          y1 (Jstr.v (string_of_float y1'));
-          x2 (Jstr.v (string_of_float x2'));
-          y2 (Jstr.v (string_of_float y2'));
+          x1 (float x1');
+          y1 (float y1');
+          x2 (float x2');
+          y2 (float y2');
           stroke (Jstr.v color');
           strokewidth (Jstr.v "0.01");
           filter (Jstr.v "url(#noise)");
@@ -23,10 +25,10 @@ let ellipse' ?(id = None) ?(fill' = "hsl(337, 92%, 69%)") (x', y') (rx', ry') =
   let at =
     At.
       [
-        cx (Jstr.v (string_of_float x'));
-        cy (Jstr.v (string_of_float y'));
-        rx (Jstr.v (string_of_float rx'));
-        ry (Jstr.v (string_of_float ry'));
+        cx (float x');
+        cy (float y');
+        rx (float rx');
+        ry (float ry');
         fill (Jstr.v fill');
         filter (Jstr.v "url(#noise)");
       ]
@@ -41,8 +43,8 @@ let text (x', y') str =
         ~at:
           At.
             [
-              x (Jstr.v (string_of_float x'));
-              y (Jstr.v (string_of_float y'));
+              x (float x');
+              y (float y');
               style (Jstr.v "font: 0.05px serif");
             ]
         [ txt' str ]))
