@@ -15,7 +15,10 @@ let parse_int_pair s =
     let int_list = String.split_on_char ',' int_list in
     match int_list with
     | [ x1; x2 ] -> Ok (parse_int x1, parse_int x2)
-    | _ -> Error (Fmt.str "Invalid pair (Expected two elements, got %d)" (List.length int_list))
+    | _ ->
+        Error
+          (Fmt.str "Invalid pair (Expected two elements, got %d)"
+             (List.length int_list))
   with
   | Scanf.Scan_failure s -> Error s
   | Failure s -> Error ("Invalid pair: " ^ s)

@@ -1,7 +1,6 @@
 open Tensor_playground.Einops
 
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
-
 let float f = Jstr.v (string_of_float f)
 
 let line ?(color' = "hsl(203.42deg 92.41% 69.02%)") (x1', y1') (x2', y2') =
@@ -41,12 +40,7 @@ let text (x', y') str =
     El.(
       v (Jstr.v "text")
         ~at:
-          At.
-            [
-              x (float x');
-              y (float y');
-              style (Jstr.v "font: 0.05px serif");
-            ]
+          At.[ x (float x'); y (float y'); style (Jstr.v "font: 0.05px serif") ]
         [ txt' str ]))
 
 let draw_radial_lines (x, y) names is_rhs =
@@ -73,12 +67,8 @@ let tensor (x', y') (rx', ry') label =
 
 let draw_contraction ((l_tensor, r_tensor), Single_contraction.{ contracted; _ })
     =
-  let left_uncontracted : string list =
-    list_subtraction l_tensor contracted
-  in
-  let right_uncontracted : string list =
-    list_subtraction r_tensor contracted
-  in
+  let left_uncontracted : string list = list_subtraction l_tensor contracted in
+  let right_uncontracted : string list = list_subtraction r_tensor contracted in
   let left_lines = draw_radial_lines (0.3, 0.5) left_uncontracted false in
   let right_lines = draw_radial_lines (0.7, 0.5) right_uncontracted true in
   let n_contracted = List.length contracted in

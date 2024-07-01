@@ -14,7 +14,8 @@ let%expect_test _ =
   go "1";
   go "123, 456";
   go "123,";
-  [%expect {|
+  [%expect
+    {|
     []
     [1]
     [123, 456]
