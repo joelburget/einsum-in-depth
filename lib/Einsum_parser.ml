@@ -32,13 +32,14 @@ end = struct
         | c
           when (c >= 'a' && c <= 'z')
                || (c >= 'A' && c <= 'Z')
-               || (c >= '0' && c <= '9') ->
+               || (c >= '0' && c <= '9')
+               || c == '_' ->
             let start = i in
             let rec find_end i =
               if i >= String.length input then i
               else
                 match input.[i] with
-                | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' -> find_end (i + 1)
+                | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> find_end (i + 1)
                 | _ -> i
             in
             let end_ = find_end i in

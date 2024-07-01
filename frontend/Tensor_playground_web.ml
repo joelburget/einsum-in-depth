@@ -11,7 +11,7 @@ let () =
   (*   "i j, j k -> i k" *)
   Einsum_explanation.explain
     (Option.get (Document.find_el_by_id G.document (Jstr.of_string "render")))
-    "a i j, a j k, a i k ->" ""
+    "batch pos head_index d_model, head_index d_model d_head -> batch pos head_index d_head" (* "a i j, a j k, a i k ->" *) "" 
 
 let isometric () =
   let tensor_type = Tensor_type.[ Elem.Variable "a"; Elem.Concrete 1 ] in

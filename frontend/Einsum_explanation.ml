@@ -94,6 +94,7 @@ let explain container contraction_str path_str =
   let selector, selected_signal =
     select
       [
+        "batch pos head_index d_model, head_index d_model d_head -> batch pos head_index d_head";
         "a i j, a j k, a i k ->";
         (* inner product *)
         "i, i ->";
