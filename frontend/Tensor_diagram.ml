@@ -44,7 +44,7 @@ let text (x', y') str =
         [ txt' str ]))
 
 let draw_radial_lines (x, y) names is_rhs =
-  let direction = if is_rhs then 0. else Float.pi in
+  let direction = if is_rhs then Float.pi *. -0.5 else Float.pi *. 0.5 in
   let radius = 0.2 in
   let angle_increment = Float.pi /. float_of_int (List.length names) in
   List.mapi
