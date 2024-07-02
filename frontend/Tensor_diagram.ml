@@ -3,6 +3,28 @@ open Tensor_playground.Einops
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
 let float f = Jstr.v (string_of_float f)
 
+let curve ?(color' = "hsl(203.42deg 92.41% 69.02%)") pt1 pt2 =
+  let open Brr_svg in
+  let x1', y1' = pt1 in
+  let x2', y2' = pt2 in
+  El.path
+    ~at:
+      At.
+        [
+          d
+            (Jstr.v
+               (Fmt.str
+                  "M %f,%f Q %f,%f %f,%f"
+                  x1' y1'
+                  x2' y1'
+                  x2' y2'));
+          fill (Jstr.v "none");
+          stroke (Jstr.v color');
+          strokewidth (Jstr.v "0.01");
+          filter (Jstr.v "url(#noise)");
+        ]
+    []
+
 let line ?(color' = "hsl(203.42deg 92.41% 69.02%)") (x1', y1') (x2', y2') =
   let open Brr_svg in
   El.line
@@ -43,6 +65,10 @@ let text (x', y') str =
           At.[ x (float x'); y (float y'); style (Jstr.v "font: 0.05px serif") ]
         [ txt' str ]))
 
+let double_curve str pt1 pt2 x =
+  let midpoint = x, 0.9 in
+  [curve pt1 midpoint; curve pt2 midpoint; text midpoint str]
+
 let draw_radial_lines (x, y) names is_rhs =
   let direction = if is_rhs then Float.pi *. -0.5 else Float.pi *. 0.5 in
   let radius = 0.2 in
@@ -65,13 +91,19 @@ let draw_radial_lines (x, y) names is_rhs =
 let tensor (x', y') (rx', ry') label =
   [ ellipse' (x', y') (rx', ry'); text (x' +. rx', y' -. ry') label ]
 
-let draw_contraction ((l_tensor, r_tensor), Single_contraction.{ contracted; _ })
+let draw_contraction ((l_tensor, r_tensor), Binary_contraction.{ contracted; zipped; _ })
     =
-  let left_uncontracted : string list = list_subtraction l_tensor contracted in
-  let right_uncontracted : string list = list_subtraction r_tensor contracted in
-  let left_lines = draw_radial_lines (0.3, 0.5) left_uncontracted false in
-  let right_lines = draw_radial_lines (0.7, 0.5) right_uncontracted true in
+    let left_x = 0.3 in
+    let right_x = 0.7 in
+    let y = 0.5 in
+    let left_center = (left_x, y) in
+    let right_center = (right_x, y) in
+  let left_uncontracted : string list = list_subtraction l_tensor (contracted @ zipped) in
+  let right_uncontracted : string list = list_subtraction r_tensor (contracted @ zipped) in
+  let left_lines = draw_radial_lines left_center left_uncontracted false in
+  let right_lines = draw_radial_lines left_center right_uncontracted true in
   let n_contracted = List.length contracted in
+  let n_zipped = List.length zipped in
   let ry, start_y = if n_contracted <= 1 then (0.05, 0.5) else (0.3, 0.2) in
   let contraction_lines =
     List.mapi
@@ -83,13 +115,28 @@ let draw_contraction ((l_tensor, r_tensor), Single_contraction.{ contracted; _ }
             +. (ry -. 0.05) *. 2.0 *. float_of_int i
                /. float_of_int (n_contracted - 1)
         in
-        [ line (0.3, y) (0.7, y); text (0.5, y) name ])
+        let middle_x = left_x +. (right_x -. left_x) /. 2. in
+        [ line (left_x, y) (right_x, y); text (middle_x, y) name ])
       contracted
   in
+  let zipped_lines =
+    List.mapi
+      (fun i name -> 
+        (* 0/0 -> left_x +. diff *. 0.5
+
+           0/1 -> left_x +. diff *. 0.33
+           1/1 -> left_x +. diff *. 0.66
+         *)
+        let x = left_x +. 
+          (right_x -. left_x) *. float_of_int (i + 1) /. float_of_int (n_zipped + 1) 
+        in
+        double_curve name left_center right_center x)
+      zipped
+  in
   let elements =
-    List.flatten (left_lines @ right_lines @ contraction_lines)
-    @ tensor (0.3, 0.5) (0.05, ry) "X"
-    @ tensor (0.7, 0.5) (0.05, ry) "Y"
+    List.flatten (left_lines @ right_lines @ contraction_lines @ zipped_lines)
+    @ tensor left_center (0.05, ry) "X"
+    @ tensor right_center (0.05, ry) "Y"
   in
   let open Brr_svg in
   El.svg
