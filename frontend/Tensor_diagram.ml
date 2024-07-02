@@ -143,8 +143,8 @@ let draw_contraction ((l_tensor, r_tensor), Binary_contraction.{ contracted; zip
     ~at:
       At.
         [
-          width (Jstr.v "400");
-          height (Jstr.v "400");
-          viewbox (Jstr.v "0 0 1 1");
+          width (Jstr.v "500");
+          height (Jstr.v "500");
+          viewbox (Jstr.v "0 0 1.3 1.3");
         ]
     elements
