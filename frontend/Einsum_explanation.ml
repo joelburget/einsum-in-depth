@@ -84,9 +84,9 @@ let explain container contraction_str path_str =
       Einops.Explain.show_loops rewrite |> Fmt.to_to_string Einops.Pyloops.pp
     in
     [
-      p [ txt' "First, we give the equivalent Python code" ];
+      p [ txt' "First, here's equivalent, simplified (but slow, because it's not vectorized) Python code. We initialize an empty "; code [txt' "result"]; txt' " array and then iterate over every position in every axis, building up the result." ];
       code [ El.pre [ txt' python_code ] ];
-      p [ txt' "Next, we show the steps of the contraction, one by one" ];
+      p [ txt' (Fmt.str "Next, we show the steps of the contraction, one by one%s" (if List.length steps = 1 then " (in this case there's just one)" else "")) ];
       div steps;
     ]
   in
