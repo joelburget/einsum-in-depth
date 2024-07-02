@@ -469,7 +469,7 @@ module Pyloops = struct
     (match rhs_tensor with
     | [] -> ()
     | _ ->
-        Fmt.pf ppf "result = np.empty((@[%a@]))@."
+        Fmt.pf ppf "result = np.zeros((@[%a@]))@."
           Fmt.(list ~sep:comma string)
           (List.map (fun index -> "N" ^ index) rhs_tensor));
 
@@ -819,7 +819,7 @@ end = struct
     go ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]);
     [%expect
       {|
-      result = np.empty((Ni, Nj))
+      result = np.zeros((Ni, Nj))
       for i in range(Ni):
           for j in range(Nj):
               total = 0
@@ -842,7 +842,7 @@ end = struct
     go ([ [ "i"; "i" ] ], [ "i" ]);
     [%expect
       {|
-      result = np.empty((Ni))
+      result = np.zeros((Ni))
       for i in range(Ni):
           total = 0
           total += A[i, i]
@@ -872,7 +872,7 @@ end = struct
     go ([ [ "b"; "i" ]; [ "b"; "j" ] ], [ "b"; "i"; "j" ]);
     [%expect
       {|
-      result = np.empty((Nb, Ni, Nj))
+      result = np.zeros((Nb, Ni, Nj))
       for b in range(Nb):
           for i in range(Ni):
               for j in range(Nj):
