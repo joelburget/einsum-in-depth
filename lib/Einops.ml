@@ -316,7 +316,7 @@ end = struct
     [%expect
       {|
         operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted: [a; j; k], zipped:
-          [], batch: [] |}];
+        [], batch: [] |}];
     go ( [ "a"; "j"; "k" ], [ "a"; "i"; "j" ] ) [ [ "a"; "i"; "k" ] ] [];
     [%expect {| operations: [], contracted: [j], zipped: [a], batch: [i; k] |}];
     go
@@ -329,7 +329,9 @@ end = struct
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "n"; "l"; "i"; "j" ];
     [%expect
-      {| operations: [tensordot [(2, 2)]], contracted: [k], zipped: [], batch: [n; l; i; j] |}];
+      {| 
+         operations: [tensordot [(2, 2)]], contracted: [k], zipped: [], batch: 
+         [n; l; i; j] |}];
 end
 
 module Unary_contraction : sig
@@ -590,6 +592,10 @@ end = struct
     Fmt.(
       pf ppf "torch.matmul(@[<hov 2>x.view%a,@ y.view%a@])%a" shape view_l shape
         view_r (list squeeze) unpack_squeeze)
+
+  let%expect_test "print squeeze" =
+    Fmt.pr "@[%a@]@." (Fmt.list squeeze) [ 1; 2; 3 ];
+    [%expect {| .squeeze(1).squeeze(2).squeeze(3) |}]
 
   let explain input_l input_r output =
     let input_l_s, input_r_s, output_s =
