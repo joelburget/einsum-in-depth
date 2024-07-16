@@ -145,13 +145,10 @@ let explain container contraction_str path_str =
   set_children container
     [
       div
-        ~at:[ class_ "m-2" ]
+        ~at:(classes "max-w-7xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4")
         [
-          div ~at:(classes "flex flex-row")
-            [
-              div [ txt' "Enter a contraction: "; c_input ];
-              div [ txt' "Or choose an example: "; selector ];
-            ];
+          div [ txt' "Choose an example: "; selector ];
+          div [ txt' "Or enter your own contraction: "; c_input ];
           div [ txt' "Path (optional): "; path_input; path_err_elem ];
           result_output;
         ];
