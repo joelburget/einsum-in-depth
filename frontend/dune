@@ -3,6 +3,7 @@
  (modes js)
  (modules
   Broadcast_explanation
+  Cytoscape
   Contraction_explanation
   Einsum_explanation
   Frontend_util

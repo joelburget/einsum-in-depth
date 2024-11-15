@@ -76,7 +76,7 @@ let explain container contraction_str path_str =
           div
             [
               code [ txt' (Einops.Explain.contraction contraction) ];
-              embed_svg (Tensor_diagram.draw_contraction contraction);
+              Tensor_diagram.draw_contraction contraction;
             ])
         contractions
     in

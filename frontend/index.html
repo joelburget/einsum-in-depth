@@ -9,32 +9,12 @@
       src="tensor_playground_web.js"
     ></script>
     <script src="isometric.js"></script>
+    <script src="cytoscape.umd.js"></script>
     <title>Tensor playground</title>
     <link href="output.css" rel="stylesheet" />
   </head>
   <body>
     <noscript>Sorry, you need to enable JavaScript to see this page.</noscript>
     <div id="render"></div>
-    <svg>
-      <defs>
-        <!-- From https://daniel.do/article/making-noisy-svgs/ -->
-        <filter id="noise" filterUnits="userSpaceOnUse">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="1950"
-            numOctaves="10"
-            result="turbulence"
-          />
-          <feComposite
-            operator="in"
-            in="turbulence"
-            in2="SourceAlpha"
-            result="composite"
-          />
-          <feColorMatrix in="composite" type="luminanceToAlpha" />
-          <feBlend in="SourceGraphic" in2="composite" mode="color-burn" />
-        </filter>
-      </defs>
-    </svg>
   </body>
 </html>
