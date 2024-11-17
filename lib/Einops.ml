@@ -738,9 +738,6 @@ end = struct
            let contracted_tensors =
              (List.nth tensors ixl, List.nth tensors ixr)
            in
-           (* let contracted_tensors_ = *)
-           (*   [ List.nth tensors ixl; List.nth tensors ixr ] *)
-           (* in *)
            let new_tensors =
              List.fold_right Util.delete_from_list [ ixl; ixr ] tensors
            in

@@ -152,67 +152,124 @@ let draw_contraction ((l_tensor, r_tensor), Binary_contraction.{ contracted; zip
     elements
 *)
 
-let draw_contraction ((l_tensor, r_tensor), Binary_contraction.{ contracted; zipped; _ }) =
+let draw_contraction
+    ((l_tensor, r_tensor), Binary_contraction.{ contracted; zipped; _ }) =
   let open Cytoscape in
-  let left_uncontracted : string list = list_subtraction l_tensor (contracted @ zipped) in
-  let right_uncontracted : string list = list_subtraction r_tensor (contracted @ zipped) in
-
-  let tensor_nodes = Node.[ {id="left"}; {id="right"} ] in
-
-  let left_uncontracted_nodes = left_uncontracted
-    |> List.map (fun x -> Node.{id = Fmt.str "left-uncontracted-%s" x})
+  let left_uncontracted : string list =
+    list_subtraction l_tensor (contracted @ zipped)
   in
-  let right_uncontracted_nodes = right_uncontracted
-    |> List.map (fun x -> Node.{id = Fmt.str "right-uncontracted-%s" x})
-  in
-  let zipped_nodes = zipped
-    |> List.map (fun x -> Node.{id = x})
+  let right_uncontracted : string list =
+    list_subtraction r_tensor (contracted @ zipped)
   in
 
-  let l_uncontracted_edges = left_uncontracted
-    |> List.map (fun name -> Edge.{
-      id = Fmt.str "%s-left" name;
-      source = Fmt.str "left-uncontracted-%s" name;
-      target = "left";
-    })
+  let tensor_nodes =
+    Node.
+      [
+        { id = "left"; label = ""; node_type = Tensor };
+        { id = "right"; label = ""; node_type = Tensor };
+      ]
   in
-  let r_uncontracted_edges = right_uncontracted
-    |> List.map (fun name -> Edge.{
-        id = Fmt.str "%s-right" name;
-        source = Fmt.str "right-uncontracted-%s" name;
-        target = "right";
-    })
+
+  let left_uncontracted_nodes =
+    left_uncontracted
+    |> List.map (fun x ->
+           Node.
+             {
+               id = Fmt.str "left-uncontracted-%s" x;
+               label = x;
+               node_type = Edge;
+             })
   in
-  let zipped_edges = zipped
-    |> List.map (fun name -> Edge.[
-      {
-        id = Fmt.str "zipped-left-%s" name;
-        source = "left";
-        target = name;
-      };
-      {
-        id = Fmt.str "zipped-%s-right" name;
-        source = name;
-        target = "right";
-      }
-  ])
+  let right_uncontracted_nodes =
+    right_uncontracted
+    |> List.map (fun x ->
+           Node.
+             {
+               id = Fmt.str "right-uncontracted-%s" x;
+               label = x;
+               node_type = Edge;
+             })
+  in
+  let zipped_nodes =
+    zipped |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+  in
+
+  let l_uncontracted_edges =
+    left_uncontracted
+    |> List.map (fun name ->
+           Edge.
+             {
+               id = Fmt.str "%s-left" name;
+               label = "";
+               source = Fmt.str "left-uncontracted-%s" name;
+               target = "left";
+             })
+  in
+  let r_uncontracted_edges =
+    right_uncontracted
+    |> List.map (fun name ->
+           Edge.
+             {
+               id = Fmt.str "%s-right" name;
+               label = "";
+               source = Fmt.str "right-uncontracted-%s" name;
+               target = "right";
+             })
+  in
+  let zipped_edges =
+    zipped
+    |> List.map (fun name ->
+           Edge.
+             [
+               {
+                 id = Fmt.str "zipped-left-%s" name;
+                 label = "";
+                 source = "left";
+                 target = name;
+               };
+               {
+                 id = Fmt.str "zipped-%s-right" name;
+                 label = "";
+                 source = name;
+                 target = "right";
+               };
+             ])
     |> List.flatten
   in
-  let contracted_edges = contracted
-    |> List.map (fun name -> Edge.{
-      id = Fmt.str "%s-contracted" name;
-      source = "left";
-      target = "right";
-    })
+
+  let contracted_edge =
+    Edge.
+      {
+        id = Fmt.str "%s-contracted" (String.concat "-" contracted);
+        label = String.concat ", " contracted;
+        source = "left";
+        target = "right";
+      }
   in
 
-  let elements = Elements.{
-     nodes = Array.of_list (tensor_nodes @ left_uncontracted_nodes @ right_uncontracted_nodes @ zipped_nodes);
-     edges = Array.of_list (l_uncontracted_edges @ r_uncontracted_edges @ zipped_edges @ contracted_edges)
-  } in
+  let elements =
+    Elements.
+      {
+        nodes =
+          Array.of_list
+            (tensor_nodes @ left_uncontracted_nodes @ right_uncontracted_nodes
+           @ zipped_nodes);
+        edges =
+          Array.of_list
+            (l_uncontracted_edges @ r_uncontracted_edges @ zipped_edges
+           @ [ contracted_edge ]);
+      }
+  in
 
-  let el = Brr.El.div [] in
-  let opts = Cytoscape.opts ~container:el ~elements () in
-  let _: Cytoscape.t = Cytoscape.create ~opts () in
-  
+  let el =
+    Brr.El.div ~at:Brr.At.[ style (Jstr.v "background-color: white;") ] []
+  in
+  let opts =
+    Cytoscape.opts ~container:el ~elements
+      ~fixed:[| ("left", 200, 300); ("right", 400, 300) |]
+      ()
+  in
+  Brr.Console.log [ opts ];
+  let _ : Cytoscape.t = Cytoscape.create ~opts () in
+
   el
