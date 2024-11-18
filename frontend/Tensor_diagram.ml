@@ -267,7 +267,7 @@ let draw_contraction
   let opts =
     Cytoscape.opts ~container:el ~elements
       ~fixed:[| ("left", 200, 300); ("right", 400, 300) |]
-      ()
+      ~zipped ()
   in
   Brr.Console.log [ opts ];
   let _ : Cytoscape.t = Cytoscape.create ~opts () in

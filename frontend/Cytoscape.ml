@@ -68,7 +68,7 @@ module Cytoscape : sig
     container:Brr.El.t ->
     elements:Elements.t ->
     fixed:(string * int * int) array ->
-    (* relative_constraints:(string * string) array -> *)
+    zipped:string list ->
     unit ->
     opts
 
@@ -93,7 +93,7 @@ end = struct
       arr;
     Hashtbl.fold (fun k _ acc -> k :: acc) seen_once [] |> String_set.of_list
 
-  let get_relative_constraints (elements : Elements.t) =
+  let get_relative_constraints (elements : Elements.t) (zipped : string list) =
     let relative_constraints : relative_constraint Queue.t = Queue.create () in
     let non_fixed_nodes =
       elements.nodes
@@ -160,9 +160,14 @@ end = struct
               Queue.add (Vertical { top; bottom }) relative_constraints
           | _, _ -> ())
       elements.edges;
+    List.iter
+      (fun bottom ->
+        Queue.add (Vertical { top = "left"; bottom }) relative_constraints;
+        Queue.add (Vertical { top = "right"; bottom }) relative_constraints)
+      zipped;
     relative_constraints |> Queue.to_seq |> Array.of_seq
 
-  let opts ~container ~elements ~fixed () =
+  let opts ~container ~elements ~fixed ~zipped () =
     Brr.El.set_inline_style (Jstr.v "height") (Jstr.v "800px") container;
     Brr.El.set_inline_style (Jstr.v "width") (Jstr.v "800px") container;
     Brr.Console.log [ "elements"; Elements.to_jv elements ];
@@ -190,7 +195,7 @@ end = struct
                       |])
                   fixed );
               ( "relativePlacementConstraint",
-                get_relative_constraints elements
+                get_relative_constraints elements zipped
                 |> Jv.of_array (function
                      | Vertical { top; bottom } ->
                          Jv.obj
