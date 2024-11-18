@@ -288,10 +288,8 @@ end = struct
       Elr.def_children elem
         (is_selected_s
         |> S.map (fun is_selected ->
-               if is_selected then (
-                 print_endline "selected";
-                 [ text_child; checkmark ])
-               else [ text_child ]));
+               if is_selected then [ text_child; checkmark ] else [ text_child ])
+        );
       (evt, elem)
     in
 

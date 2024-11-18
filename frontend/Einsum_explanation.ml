@@ -68,6 +68,27 @@ let trim_before_colon s =
     String.sub s (colon_index + 1) (String.length s - colon_index - 1)
   with Not_found -> s
 
+let rec unsnoc = function
+  | [] -> failwith "unsnoc empty list"
+  | [ x ] -> ([], x)
+  | x :: xs ->
+      let init, last = unsnoc xs in
+      (x :: init, last)
+
+let rec intersperse sep = function
+  | [] -> []
+  | [ x ] -> [ x ]
+  | x :: xs -> x :: x :: sep :: intersperse sep xs
+
+let list_variables = function
+  | [] -> []
+  | [ x ] -> [ code [ txt' x ] ]
+  | xs ->
+      let init, last = unsnoc xs in
+      (intersperse (txt' ", ") (List.map (fun str -> code [ txt' str ]) init)
+       @ [ txt' " and "; code [ txt' last ] ]
+        : El.t list)
+
 let explain container contraction_str path_str =
   let result_output = div [] in
   let parsed_path_signal, path_input, path_err_elem =
@@ -86,12 +107,20 @@ let explain container contraction_str path_str =
             ])
         contractions
     in
-    let python_code =
-      Einops.Explain.show_loops rewrite |> Fmt.to_to_string Einops.Pyloops.pp
-    in
+    let pyloops = Einops.Explain.show_loops rewrite in
+    let python_code = Fmt.to_to_string Einops.Pyloops.pp pyloops in
+    let free_indices = String_set.to_list pyloops.free_indices in
+    let summation_indices = String_set.to_list pyloops.summation_indices in
     [
       p
         [
+          txt'
+            "In outer loops, we iterate over all free indices to generate each \
+             output element (";
+          span (list_variables free_indices);
+          txt' "), while in inner loops we iterate over all summation indices (";
+          span (list_variables summation_indices);
+          txt' ") to sum over each product term.";
           txt'
             "First, here's equivalent, simplified (but slow, because it's not \
              vectorized) Python code. We initialize an empty ";
@@ -168,6 +197,12 @@ let explain container contraction_str path_str =
                 "Einsums generalize many linear algebra operations: matrix \
                  multiplication, dot / Frobenius product, transpose, trace, \
                  etc. TODO";
+            ];
+          p
+            [
+              txt'
+                "At the highest level, an einsum string describes the shapes \
+                 of ";
             ];
           div [ txt' "Choose an example: "; selector ];
           div [ txt' "Or enter your own contraction: "; c_input ];
