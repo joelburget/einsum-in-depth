@@ -62,6 +62,12 @@ let validate_inputs :
 let parse_path s =
   s |> Path_parser.parse |> Result.map_error (fun msg -> (msg, ""))
 
+let trim_before_colon s =
+  try
+    let colon_index = String.index s ':' in
+    String.sub s (colon_index + 1) (String.length s - colon_index - 1)
+  with Not_found -> s
+
 let explain container contraction_str path_str =
   let result_output = div [] in
   let parsed_path_signal, path_input, path_err_elem =
@@ -84,9 +90,24 @@ let explain container contraction_str path_str =
       Einops.Explain.show_loops rewrite |> Fmt.to_to_string Einops.Pyloops.pp
     in
     [
-      p [ txt' "First, here's equivalent, simplified (but slow, because it's not vectorized) Python code. We initialize an empty "; code [txt' "result"]; txt' " array and then iterate over every position in every axis, building up the result." ];
+      p
+        [
+          txt'
+            "First, here's equivalent, simplified (but slow, because it's not \
+             vectorized) Python code. We initialize an empty ";
+          code [ txt' "result" ];
+          txt'
+            " array and then iterate over every position in every axis, \
+             building up the result.";
+        ];
       code [ El.pre [ txt' python_code ] ];
-      p [ txt' (Fmt.str "Next, we show the steps of the contraction, one by one%s" (if List.length steps = 1 then " (in this case there's just one)" else "")) ];
+      p
+        [
+          txt'
+            (Fmt.str "Next, we show the steps of the contraction, one by one%s"
+               (if List.length steps = 1 then " (in this case there's just one)"
+                else ""));
+        ];
       div steps;
     ]
   in
@@ -97,41 +118,32 @@ let explain container contraction_str path_str =
         "batch pos head_index d_model, head_index d_model d_head -> batch pos \
          head_index d_head";
         "a i j, a j k, a i k ->";
-        (* inner product *)
-        "i, i ->";
+        "inner product: i, i ->";
         "i j, i j ->";
-        (* matmul *)
-        "i j, j k -> i k";
-        (* trace *)
-        "i i ->";
-        (* transpose *)
-        "i j -> j i";
-        (* sum *)
-        "i j ->";
-        (* column sum *)
-        "i j -> j";
-        (* row sum *)
-        "i j -> i";
-        (* hadamard product *)
-        "i j, i j -> i j";
-        (* outer product *)
-        "i, j -> i j";
-        (* batch matmul *)
-        "b i j, b j k -> b i k";
+        "matrix multiplication: i j, j k -> i k";
+        "trace: i i ->";
+        "transpose: i j -> j i";
+        "sum: i j ->";
+        "column sum: i j -> j";
+        "row sum: i j -> i";
+        "hadamard product: i j, i j -> i j";
+        "outer product: i, j -> i j";
+        "batch matrix multiplication: b i j, b j k -> b i k";
         (* tensor contraction *)
         "p q r s, t u q v r -> p s t u v";
-        (* bilinear transformation *)
-        "i j, j k l -> i j";
+        "bilinear transformation: i j, j k l -> i j";
       ]
   in
 
   let logger, c_input, current_input =
-    input' ~at:input_classes contraction_str (S.changes selected_signal)
+    input' ~at:input_classes contraction_str
+      (selected_signal |> S.changes |> E.map trim_before_colon)
   in
   Logr.may_hold logger;
 
   let explanation_signal =
-    current_input |> S.map Einsum_parser.parse
+    current_input
+    |> S.map (fun str -> str |> trim_before_colon |> Einsum_parser.parse)
     |> S.l2
          (fun path rewrite ->
            match rewrite with
@@ -145,8 +157,18 @@ let explain container contraction_str path_str =
   set_children container
     [
       div
-        ~at:(classes "max-w-7xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4")
+        ~at:
+          (classes
+             "max-w-7xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4")
         [
+          h1 ~at:(classes "text-2xl") [ txt' "Einsum Explorer" ];
+          p
+            [
+              txt'
+                "Einsums generalize many linear algebra operations: matrix \
+                 multiplication, dot / Frobenius product, transpose, trace, \
+                 etc. TODO";
+            ];
           div [ txt' "Choose an example: "; selector ];
           div [ txt' "Or enter your own contraction: "; c_input ];
           div [ txt' "Path (optional): "; path_input; path_err_elem ];

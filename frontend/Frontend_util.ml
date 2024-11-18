@@ -22,7 +22,8 @@ let ( code,
       p,
       ol,
       ul,
-      li ) =
+      li,
+      h1 ) =
   El.
     ( code,
       set_children,
@@ -39,7 +40,8 @@ let ( code,
       p,
       ol,
       ul,
-      li )
+      li,
+      h1 )
 
 let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
 let svg_at name value = Brr_svg.At.v (Jstr.v name) (Jstr.v value)
@@ -168,7 +170,9 @@ let result_list : ('a, 'e) result list -> ('a list, 'e) result =
   in
   loop results
 
-module Select = struct
+module Select : sig
+  val select : string list -> El.t * string signal
+end = struct
   let chevrons_svg =
     let open Brr_svg in
     let open El in
@@ -234,9 +238,9 @@ module Select = struct
              at "aria-labelledby" "listbox-label";
            ]
           @ classes
-              "relative w-full cursor-default rounded-md bg-white py-1.5 \
-               pl-3 pr-10 text-left text-gray-900 shadow-sm ring-1 \
-               ring-inset ring-gray-300 focus:outline-none focus:ring-2 \
+              "relative w-full cursor-default rounded-md bg-white py-1.5 pl-3 \
+               pr-10 text-left text-gray-900 shadow-sm ring-1 ring-inset \
+               ring-gray-300 focus:outline-none focus:ring-2 \
                focus:ring-indigo-600 sm:text-sm sm:leading-6")
         El.
           [
@@ -249,9 +253,14 @@ module Select = struct
               [ embed_svg chevrons_svg ];
           ]
     in
-    let click_button_event = Evr.on_el Ev.click (fun evt -> 
-      Ev.stop_propagation evt; (* Prevent click_outside_event from triggering *)
-      ButtonClick) button in
+    let click_button_event =
+      Evr.on_el Ev.click
+        (fun evt ->
+          Ev.stop_propagation evt;
+          (* Prevent click_outside_event from triggering *)
+          ButtonClick)
+        button
+    in
 
     let checkmark =
       span
@@ -288,13 +297,15 @@ module Select = struct
 
     let list_evts, list_elems = List.split (List.mapi item items) in
 
-    let click_outside_event = Evr.on_el Ev.click (fun _ -> ClickOutside) (Document.body G.document) in
+    let click_outside_event =
+      Evr.on_el Ev.click (fun _ -> ClickOutside) (Document.body G.document)
+    in
     Logr.may_hold
       E.(
-        log (click_button_event) (fun ButtonClick ->
+        log click_button_event (fun ButtonClick ->
             set_dropdown_open (not (S.value dropdown_open_signal))));
     Logr.may_hold
-      E.(log (click_outside_event) (fun ClickOutside -> set_dropdown_open false));
+      E.(log click_outside_event (fun ClickOutside -> set_dropdown_open false));
     Logr.may_hold E.(log (select list_evts) set_selected);
 
     let list =
