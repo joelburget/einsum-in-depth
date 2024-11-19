@@ -129,15 +129,17 @@ let explain container contraction_str path_str =
             " array and then iterate over every position in every axis, \
              building up the result.";
         ];
-      code [ El.pre [ txt' python_code ] ];
+      code
+        ~at:(classes "before:content-[''] after:content-['']")
+        [ El.pre [ txt' python_code ] ];
       p
         [
           txt'
-            (Fmt.str "Next, we show the steps of the contraction, one by one%s"
+            (Fmt.str "Next, we show the steps of the contraction, one by one%s:"
                (if List.length steps = 1 then " (in this case there's just one)"
                 else ""));
         ];
-      div (*~at:(classes "not-prose")*) steps;
+      div steps;
     ]
   in
 

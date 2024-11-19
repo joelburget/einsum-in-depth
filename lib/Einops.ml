@@ -751,8 +751,6 @@ end = struct
         (list string ~sep:sp) single_contraction.contracted
         (list string ~sep:sp) l_tensor (list string ~sep:sp) r_tensor
         (list string ~sep:sp) result_type General_matmul.pp_expr general_matmul)
-  (* (list Single_contraction.Op.pp ~sep:comma)
-     single_contraction.operations *)
 
   let%expect_test "contraction" =
     let go rewrite path =
