@@ -137,7 +137,7 @@ let explain container contraction_str path_str =
                (if List.length steps = 1 then " (in this case there's just one)"
                 else ""));
         ];
-      div steps;
+      div (*~at:(classes "not-prose")*) steps;
     ]
   in
 
@@ -188,25 +188,90 @@ let explain container contraction_str path_str =
       div
         ~at:
           (classes
-             "max-w-7xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4")
+             "max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4 \
+              dark:prose-invert prose prose-p:my-2")
         [
-          h1 ~at:(classes "text-2xl") [ txt' "Einsum Explorer" ];
+          h1 ~at:(classes "font-normal") [ txt' "Einsum Explorer" ];
           p
             [
               txt'
-                "Einsums generalize many linear algebra operations: matrix \
-                 multiplication, dot / Frobenius product, transpose, trace, \
-                 etc. TODO";
+                "Einsum notation is a compact and intuitive way to write many \
+                 linear algebra operations: matrix multiplication, dot / \
+                 Frobenius product, transpose, trace, as well as many more \
+                 complex operations which don't have a name.";
             ];
           p
             [
               txt'
                 "At the highest level, an einsum string describes the shapes \
-                 of ";
+                 of each of the input tensors and the output tensor, by \
+                 labeling each axis of each tensor. Whenever a label is \
+                 repeated, it's summed, whereas if a label only appears once, \
+                 it's not summed. (Repeated labels on the same tensor take the \
+                 diagonal.)";
             ];
           div [ txt' "Choose an example: "; selector ];
-          div [ txt' "Or enter your own contraction: "; c_input ];
-          div [ txt' "Path (optional): "; path_input; path_err_elem ];
+          div
+            [
+              txt' "Or enter your own contraction: ";
+              c_input;
+              info
+                (div
+                   [
+                     txt' "We use ";
+                     a "https://einops.rocks/" "einops notation";
+                     txt' ", not the notation built in to Numpy and Pytorch.";
+                   ]);
+            ];
+          div
+            [
+              txt' "Path (optional): ";
+              path_input;
+              info
+                (div
+                   [
+                     p
+                       [
+                         txt'
+                           "A group of tensors is reduced one pair at a time. \
+                            (This only matters when there are three or more \
+                            tensors). The path specifies the order in which we \
+                            reduce the tensors.";
+                       ];
+                     p
+                       [
+                         txt'
+                           "Why does this matter? The result will be the same \
+                            no matter which order tensors were reduced in, but \
+                            different orders can have vastly different \
+                            performance characteristics. ";
+                         a "https://github.com/dgasmith/opt_einsum" "opt_einsum";
+                         txt'
+                           " shows an example where the same reduction takes \
+                            3000x longer without optimization.";
+                       ];
+                     p
+                       [
+                         txt'
+                           "The general problem of finding the optimal path is \
+                            NP-hard. See the ";
+                         a
+                           "https://dgasmith.github.io/opt_einsum/paths/introduction/"
+                           "opt_einsum docs";
+                         txt' " for more.";
+                       ];
+                     p
+                       [
+                         txt'
+                           "In this tool, you can specify the path as a list \
+                            of pairs of integers, separated by commas. For \
+                            example, ";
+                         code [ txt' "(0, 1), (1, 2)" ];
+                       ];
+                   ]);
+              path_err_elem;
+            ];
           result_output;
+          div ~at:(classes "min-h-32") [];
         ];
     ]

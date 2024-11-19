@@ -117,7 +117,7 @@ let parsed_input :
   let input_elem =
     input ~at:([ At.value (Jstr.of_string start_value) ] @ input_classes) ()
   in
-  let parse_error_elem = div [] in
+  let parse_error_elem = div (* ~at:(classes "inline") *) [] in
 
   let input_signal, set_input = S.create start_value in
   let parse_error_signal, set_parse_error = S.create [] in
@@ -170,8 +170,9 @@ let result_list : ('a, 'e) result list -> ('a list, 'e) result =
   in
   loop results
 
-module Select : sig
+module Select_and_info : sig
   val select : string list -> El.t * string signal
+  val info : El.t -> El.t
 end = struct
   let chevrons_svg =
     let open Brr_svg in
@@ -196,7 +197,7 @@ end = struct
           [];
       ]
 
-  let checkmark_svg =
+  let checkmark_svg () =
     let open Brr_svg in
     let open El in
     svg
@@ -217,8 +218,91 @@ end = struct
           [];
       ]
 
+  let info_svg () =
+    let open Brr_svg in
+    let open El in
+    svg
+      ~at:
+        (svg_classes "h-4 w-4"
+        @ [ svg_at "aria-hidden" "true" ]
+        @ [ viewbox "0 0 24 24"; fill "currentColor" ])
+      [
+        path
+          ~at:
+            [
+              d
+                "M 12 2 C 6.4889971 2 2 6.4889971 2 12 C 2 17.511003 6.4889971 \
+                 22 12 22 C 17.511003 22 22 17.511003 22 12 C 22 6.4889971 \
+                 17.511003 2 12 2 z M 12 4 C 16.430123 4 20 7.5698774 20 12 C \
+                 20 16.430123 16.430123 20 12 20 C 7.5698774 20 4 16.430123 4 \
+                 12 C 4 7.5698774 7.5698774 4 12 4 z M 11 7 L 11 9 L 13 9 L 13 \
+                 7 L 11 7 z M 11 11 L 11 17 L 13 17 L 13 11 L 11 11 z";
+            ]
+          [];
+      ]
+
   type button_click_event = ButtonClick
   type click_outside_event = ClickOutside
+
+  let info child =
+    let dropdown_open_signal, set_dropdown_open = S.create false in
+    let click_outside_event =
+      Evr.on_el Ev.click (fun _ -> ClickOutside) (Document.body G.document)
+    in
+
+    let click_child_event =
+      Evr.on_el Ev.click
+        (fun evt ->
+          (* Prevent click_outside_event from triggering *)
+          Ev.stop_propagation evt)
+        child
+    in
+
+    let button =
+      El.button
+        ~at:[ type' "button" ]
+        [ span ~at:(classes "inline-flex") [ embed_svg (info_svg ()) ] ]
+    in
+    let click_button_event =
+      Evr.on_el Ev.click
+        (fun evt ->
+          Ev.stop_propagation evt;
+          (* Prevent click_outside_event from triggering *)
+          ButtonClick)
+        button
+    in
+
+    Logr.may_hold
+      E.(
+        log click_button_event (fun ButtonClick ->
+            set_dropdown_open (not (S.value dropdown_open_signal))));
+    Logr.may_hold
+      E.(log click_outside_event (fun ClickOutside -> set_dropdown_open false));
+    Logr.may_hold E.(log click_child_event (fun _ -> ()));
+
+    let result_elem =
+      El.div ~at:(classes "inline align-middle relative not-prose") []
+    in
+    Elr.def_children result_elem
+      (dropdown_open_signal
+      |> S.map (fun open' ->
+             if open' then
+               [
+                 button;
+                 div
+                   ~at:(classes "absolute z-10 flex w-screen max-w-max px-4")
+                   [
+                     div
+                       ~at:
+                         (classes
+                            "w-screen max-w-md flex-auto overflow-hidden \
+                             rounded-md bg-white dark:bg-slate-800 text-sm/6 \
+                             shadow-lg ring-1 ring-gray-900/5 p-3")
+                       [ child ];
+                   ];
+               ]
+             else [ button ]));
+    result_elem
 
   let select items =
     let selected_signal, set_selected = S.create 0 in
@@ -241,16 +325,16 @@ end = struct
               "relative w-full cursor-default rounded-md bg-white py-1.5 pl-3 \
                pr-10 text-left text-gray-900 shadow-sm ring-1 ring-inset \
                ring-gray-300 focus:outline-none focus:ring-2 \
-               focus:ring-indigo-600 sm:text-sm sm:leading-6")
+               focus:ring-indigo-600 sm:text-sm sm:leading-6 inline-flex")
         El.
           [
-            selected_span;
             span
               ~at:
                 (classes
                    "pointer-events-none absolute inset-y-0 right-0 flex \
                     items-center pr-2")
               [ embed_svg chevrons_svg ];
+            selected_span;
           ]
     in
     let click_button_event =
@@ -267,7 +351,7 @@ end = struct
         ~at:
           (classes
              "text-indigo-600 absolute inset-y-0 right-0 flex items-center pr-4")
-        [ embed_svg checkmark_svg ]
+        [ embed_svg (checkmark_svg ()) ]
     in
 
     let item i name =
@@ -321,11 +405,13 @@ end = struct
         list_elems
     in
 
-    let result_elem = El.div [] in
+    let result_elem = El.div ~at:(classes "not-prose") [] in
     Elr.def_children result_elem
       (dropdown_open_signal
       |> S.map (fun open' -> if open' then [ button; list ] else [ button ]));
     (result_elem, selected_item)
 end
 
-let select items = Select.select items
+let select items = Select_and_info.select items
+let info child = Select_and_info.info child
+let a link text = El.a ~at:[ At.href (Jstr.v link) ] [ txt' text ]
