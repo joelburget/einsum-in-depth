@@ -97,12 +97,27 @@ let explain container contraction_str path_str =
 
   let f path rewrite =
     let contractions = Einops.Explain.get_contractions ?path rewrite in
+    let show_step_no = List.length contractions > 1 in
     let steps =
-      List.map
-        (fun contraction ->
+      List.mapi
+        (fun i contraction ->
+          let contracted, contraction_type, operation =
+            Einops.Explain.contraction contraction
+          in
           div
             [
-              code [ txt' (Einops.Explain.contraction contraction) ];
+              span
+                [
+                  txt'
+                    (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
+                ];
+              span [ txt' "Contract " ];
+              code [ txt' contracted ];
+              span [ txt' " (" ];
+              code [ txt' contraction_type ];
+              span [ txt' ") (in Pytorch this would be " ];
+              code [ txt' operation ];
+              span [ txt' ")." ];
               Tensor_diagram.draw_contraction contraction;
             ])
         contractions

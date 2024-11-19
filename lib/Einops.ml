@@ -697,7 +697,9 @@ end = struct
 end
 
 module Explain : sig
-  val contraction : (string list * string list) * Binary_contraction.t -> string
+  val contraction :
+    (string list * string list) * Binary_contraction.t ->
+    string * string * string
   (** Explain a single contraction step *)
 
   val get_contractions :
@@ -746,16 +748,19 @@ end = struct
         (string list * string list) * Binary_contraction.t) =
     let result_type = single_contraction.batch @ single_contraction.zipped in
     let general_matmul = General_matmul.explain l_tensor r_tensor result_type in
-    Fmt.(
-      str "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]"
-        (list string ~sep:sp) single_contraction.contracted
-        (list string ~sep:sp) l_tensor (list string ~sep:sp) r_tensor
-        (list string ~sep:sp) result_type General_matmul.pp_expr general_matmul)
+    ( Fmt.(str "%a" (list string ~sep:sp) single_contraction.contracted),
+      Fmt.(
+        str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp) l_tensor
+          (list string ~sep:sp) r_tensor (list string ~sep:sp) result_type),
+      Fmt.(str "%a" General_matmul.pp_expr general_matmul) )
 
   let%expect_test "contraction" =
     let go rewrite path =
       get_contractions ~path rewrite
-      |> List.map contraction
+      |> List.map (fun c ->
+             let contracted, contraction_type, operation = contraction c in
+             Fmt.str "@[<2>contract@ @[%s@] (%s)@ (%s)@]" contracted
+               contraction_type operation)
       |> Fmt.(list ~sep:sp string) Fmt.stdout
     in
     let rewrite =
