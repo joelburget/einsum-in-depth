@@ -231,6 +231,8 @@ module Binary_contraction : sig
   end
 
   type t = {
+    l : string list;
+    r : string list;
     operations : Op.t list;  (** Operations to perform in order *)
     contracted : string list;
     zipped : string list;
@@ -271,6 +273,8 @@ end = struct
   end
 
   type t = {
+    l : string list;
+    r : string list;
     operations : Op.t list;
     contracted : string list;
     zipped : string list;
@@ -278,13 +282,14 @@ end = struct
     result_type : string list;
   }
 
-  let pp ppf { operations; contracted; zipped; batch; result_type } =
-    let l = Fmt.(list string ~sep:semi) in
+  let pp ppf { l; r; operations; contracted; zipped; batch; result_type } =
+    let lst = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf
-      "operations: @[[%a]@], contracted: @[[%a]@], zipped: @[[%a]@], batch: \
-       @[[%a]@], result_type: @[[%a]@]"
+      "l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], contracted: @[[%a]@], \
+       zipped: @[[%a]@], batch: @[[%a]@], result_type: @[[%a]@]"
+      lst l lst r
       Fmt.(list ~sep:comma Op.pp)
-      operations l contracted l zipped l batch l result_type
+      operations lst contracted lst zipped lst batch lst result_type
 
   (* Try matching two inputs and an output to a tensordot operation *)
   let match_tensordot x y z =
@@ -326,12 +331,12 @@ end = struct
         Some Matmul
     | (x, y), z -> match_tensordot x y z
 
-  let make cl cr ~other_tensors ~result_type =
+  let make l r ~other_tensors ~result_type =
     let inter, union, diff = SS.(inter, union, diff) in
-    let cl', cr' = SS.(of_list cl, of_list cr) in
+    let l_set, r_set = SS.(of_list l, of_list r) in
     let contracted_tensors_labels, other_tensors_labels, eventual_result_labels
         =
-      ( [ cl; cr ] |> List.flatten |> SS.of_list,
+      ( [ l; r ] |> List.flatten |> SS.of_list,
         other_tensors |> List.flatten |> SS.of_list,
         SS.of_list result_type )
     in
@@ -354,14 +359,14 @@ end = struct
     in
     (* An axis is a batch axis if it's in one of the inputs, zipped if in both *)
     let zipped, batch =
-      List.partition (fun x -> SS.mem x cl' && SS.mem x cr') preserved
+      List.partition (fun x -> SS.mem x l_set && SS.mem x r_set) preserved
     in
     let operations =
-      match match_op (cl, cr) preserved with
+      match match_op (l, r) preserved with
       | Some op -> [ op ]
       | None -> [ (* TODO *) ]
     in
-    { operations; contracted; zipped; batch; result_type }
+    { l; r; operations; contracted; zipped; batch; result_type }
 
   let%expect_test "operations" =
     let go l r result_type =
@@ -817,65 +822,63 @@ end = struct
 end
 
 module Explain : sig
-  type contraction =
+  type contractions =
     | Unary_contraction of string list * Unary_contraction.t
-    | Binary_contraction of string list * string list * Binary_contraction.t
+    | Binary_contractions of Binary_contraction.t list
 
-  val get_contractions : ?path:(int * int) list -> Rewrite.t -> contraction list
+  val get_contractions : ?path:(int * int) list -> Rewrite.t -> contractions
   (** Get the contractions along the given path. *)
 
   val show_loops : Rewrite.t -> Pyloops.t
   (** Put in [Pyloops.t] format. *)
 end = struct
-  type contraction =
+  type contractions =
     | Unary_contraction of string list * Unary_contraction.t
-    | Binary_contraction of string list * string list * Binary_contraction.t
+    | Binary_contractions of Binary_contraction.t list
 
   let get_contractions ?path (bindings, result_group) =
     let n_tensors = List.length bindings in
 
     if n_tensors = 1 then
       let tensor = List.hd bindings in
-      [
-        Unary_contraction
-          ( tensor,
-            Unary_contraction.make ~contracted:tensor ~result_type:result_group
-          );
-      ]
+      Unary_contraction
+        ( tensor,
+          Unary_contraction.make ~contracted:tensor ~result_type:result_group )
     else
       let path =
         match path with
         | Some [] | None -> List.init (n_tensors - 1) (fun _ -> (0, 1))
         | Some path -> path
       in
-      path
-      |> List.fold_left
-           (fun (tensors, steps) (ixl, ixr) ->
-             let cl, cr = List.(nth bindings ixl, nth bindings ixr) in
-             let new_tensors =
-               List.fold_right Util.delete_from_list [ ixl; ixr ] tensors
-             in
-             (* XXX two calls to Binary_contraction.make *)
-             let single_contraction =
-               Binary_contraction.make cl cr ~other_tensors:new_tensors
-                 ~result_type:result_group
-             in
-             let new_tensors =
-               List.append new_tensors
-                 [ single_contraction.batch @ single_contraction.zipped ]
-             in
-             let step =
-               Binary_contraction.make cl cr ~other_tensors:new_tensors
-                 ~result_type:result_group
-             in
-             ( new_tensors,
-               List.append steps [ Binary_contraction (cl, cr, step) ] ))
-           (bindings, [])
-      |> snd
+      let _, steps =
+        path
+        |> List.fold_left
+             (fun (tensors, steps) (ixl, ixr) ->
+               let cl, cr = List.(nth bindings ixl, nth bindings ixr) in
+               let new_tensors =
+                 List.fold_right Util.delete_from_list [ ixl; ixr ] tensors
+               in
+               (* XXX two calls to Binary_contraction.make *)
+               let single_contraction =
+                 Binary_contraction.make cl cr ~other_tensors:new_tensors
+                   ~result_type:result_group
+               in
+               let new_tensors =
+                 List.append new_tensors
+                   [ single_contraction.batch @ single_contraction.zipped ]
+               in
+               let step =
+                 Binary_contraction.make cl cr ~other_tensors:new_tensors
+                   ~result_type:result_group
+               in
+               (new_tensors, List.append steps [ step ]))
+             (bindings, [])
+      in
+      Binary_contractions steps
 
   let pp_explain_binary_contraction ppf
-      ((l_tensor, r_tensor, single_contraction) :
-        string list * string list * Binary_contraction.t) =
+      (single_contraction : Binary_contraction.t) =
+    let l_tensor, r_tensor = (single_contraction.l, single_contraction.r) in
     let general_matmul =
       General_matmul.make l_tensor r_tensor single_contraction.result_type
     in
@@ -896,13 +899,12 @@ end = struct
 
   let%expect_test "explain contractions" =
     let go rewrite path =
-      get_contractions ~path rewrite
-      |> List.iter (function
-           | Binary_contraction (l, r, c) ->
-               Fmt.pr "@[%a@]@." pp_explain_binary_contraction (l, r, c)
-           | Unary_contraction (tensor, unary_contraction) ->
-               Fmt.pr "@[%a@]@." pp_explain_unary_contraction
-                 (tensor, unary_contraction))
+      match get_contractions ~path rewrite with
+      | Binary_contractions cs ->
+          Fmt.(pr "@[%a@]@." (list pp_explain_binary_contraction) cs)
+      | Unary_contraction (tensor, unary_contraction) ->
+          Fmt.pr "@[%a@]@." pp_explain_unary_contraction
+            (tensor, unary_contraction)
     in
     let rewrite =
       ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])

@@ -97,18 +97,26 @@ let explain container contraction_str path_str =
 
   let f path rewrite =
     let contractions = Einops.Explain.get_contractions ?path rewrite in
-    let show_step_no = List.length contractions > 1 in
-    Brr.Console.log [ Jv.of_string "contractions"; List.length contractions ];
+    let show_step_no =
+      match contractions with
+      | Unary_contraction _ -> false
+      | Binary_contractions contractions -> List.length contractions > 1
+    in
     let steps =
-      List.mapi
-        (fun i contraction ->
-          match contraction with
-          | Einops.Explain.Unary_contraction _ ->
-              div [ txt' "Unary contraction (TODO)" ]
-          | Binary_contraction (tensors, contraction) ->
-              let l_tensor, r_tensor = tensors in
-              let Einops.Explain.{ result_type; general_matmul } =
-                Einops.Explain.explain_binary_contraction tensors contraction
+      match contractions with
+      | Einops.Explain.Unary_contraction _ ->
+          [ div [ txt' "Unary contraction (TODO)" ] ]
+      | Binary_contractions contractions ->
+          List.mapi
+            (fun i contraction ->
+              let l_tensor, r_tensor =
+                Einops.Binary_contraction.(contraction.l, contraction.r)
+              in
+              let result_type =
+                contraction.Einops.Binary_contraction.result_type
+              in
+              let general_matmul =
+                Einops.General_matmul.make l_tensor r_tensor result_type
               in
               div
                 [
@@ -142,7 +150,8 @@ let explain container contraction_str path_str =
                           str "%a" Einops.General_matmul.pp_expr general_matmul);
                     ];
                   span [ txt' ")." ];
-                  Tensor_diagram.draw_contraction tensors contraction;
+                  Tensor_diagram.draw_contraction (l_tensor, r_tensor)
+                    contraction;
                   info
                     (div
                        [
@@ -150,7 +159,7 @@ let explain container contraction_str path_str =
                          p [ txt' "" ];
                        ]);
                 ])
-        contractions
+            contractions
     in
     let pyloops = Einops.Explain.show_loops rewrite in
     let python_code = Fmt.to_to_string Einops.Pyloops.pp pyloops in
