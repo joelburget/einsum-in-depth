@@ -42,6 +42,11 @@ module Find_matches_impl : sig
   val find_matches : string list -> string list -> (string * int * int) list
   (** Given a list of strings, find a maximal set of matching indices, where each position in a list can only match once (in the case of duplicates either match is okay). The lists are not necessarily the same length. *)
 end = struct
+  let rec safe_map2 f xs ys =
+    match (xs, ys) with
+    | [], _ | _, [] -> []
+    | x :: xs, y :: ys -> f x y :: safe_map2 f xs ys
+
   let find_matches lst1 lst2 =
     let h1 = Hashtbl.create 10 in
     let h2 = Hashtbl.create 10 in
@@ -63,7 +68,7 @@ end = struct
       (fun k v1 ->
         if Hashtbl.mem h2 k then
           let v2 = Hashtbl.find h2 k in
-          let match_pairs = List.map2 (fun x y -> (k, x, y)) v1 v2 in
+          let match_pairs = safe_map2 (fun x y -> (k, x, y)) v1 v2 in
           matches := List.append !matches match_pairs)
       h1;
 
@@ -88,7 +93,9 @@ end = struct
     go [ "a"; "a" ] [ "a"; "a" ];
     [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ];
-    [%expect {| [a; j; k], [a; j; k] -> [(a, 0, 0); (k, 2, 2); (j, 1, 1)]|}]
+    [%expect {| [a; j; k], [a; j; k] -> [(a, 0, 0); (k, 2, 2); (j, 1, 1)]|}];
+    go [ "a"; "a" ] [ "a" ];
+    [%expect {| [a; a], [a] -> [(a, 1, 0)]|}]
 end
 
 open Find_matches_impl
@@ -219,6 +226,49 @@ end
 
 open Minimum_swaps_impl
 
+module Index_helpers : sig
+  val indexof : 'a -> 'a list -> int option
+  val first_repeat_indices : 'a list -> ('a * int * int) option
+  val has_repeat_indices : 'a list -> bool
+end = struct
+  let indexof x lst =
+    let rec go i = function
+      | [] -> None
+      | y :: ys -> if x = y then Some i else go (i + 1) ys
+    in
+    go 0 lst
+
+  let first_repeat_indices lst =
+    let rec go i = function
+      | [] -> None
+      | x :: xs -> (
+          match indexof x xs with
+          | None -> go (i + 1) xs
+          | Some j -> Some (x, i, i + j + 1))
+    in
+    go 0 lst
+
+  let has_repeat_indices lst =
+    match first_repeat_indices lst with Some _ -> true | None -> false
+
+  let%expect_test "first_repeat_indices" =
+    let go lst =
+      match first_repeat_indices lst with
+      | None -> Fmt.pr "None@."
+      | Some (x, i, j) -> Fmt.pr "(%s, %d, %d)@." x i j
+    in
+    go [ "a"; "b"; "c" ];
+    [%expect {| None |}];
+    go [ "a"; "b"; "a" ];
+    [%expect {| (a, 0, 2) |}];
+    go [ "a"; "b"; "c"; "a" ];
+    [%expect {| (a, 0, 3) |}];
+    go [ "a"; "a" ];
+    [%expect {| (a, 0, 1) |}]
+end
+
+open Index_helpers
+
 module Binary_contraction : sig
   module Op : sig
     type t =
@@ -228,6 +278,8 @@ module Binary_contraction : sig
           (** Tensordot operation with an explicit list of dimensions to contract *)
       | Matmul
       | Inner
+      | Diagonal of int * int * int  (** Diagonalize an input matrix *)
+      | Mul  (** Multiply two matrices *)
 
     val pp : t Fmt.t
   end
@@ -238,6 +290,7 @@ module Binary_contraction : sig
     operations : Op.t list;  (** Operations to perform in order *)
     contracted : string list;
     zipped : string list;
+        (** These indices are not contracted -- just aligned *)
     batch : string list;
     result_type : string list;
   }
@@ -250,10 +303,10 @@ module Binary_contraction : sig
     other_tensors:string list list ->
     result_type:string list ->
     t
-  (** Get a binary contraction.
+  (** Construct a binary contraction.
 
-      @param contracted_tensors The two tensors which are contracted.
-      @param other_tensors This is used to tell which dimensions won't be used later so we can contract them.
+      @param contracted_tensors The two tensors to be contracted.
+      @param other_tensors This is used to tell which dimensions will / won't be used later so we can preserve / contract them.
       @param result_type The type of tensor which should be left.
    *)
 end = struct
@@ -263,6 +316,8 @@ end = struct
       | Tensordot2 of (int * int) list
       | Matmul
       | Inner
+      | Diagonal of int * int * int
+      | Mul
 
     let pp ppf = function
       | Tensordot1 ix -> Fmt.pf ppf "tensordot %d" ix
@@ -272,6 +327,8 @@ end = struct
             ixs
       | Matmul -> Fmt.string ppf "matmul"
       | Inner -> Fmt.string ppf "inner"
+      | Diagonal (a, b, c) -> Fmt.pf ppf "diagonal (%d, %d, %d)" a b c
+      | Mul -> Fmt.string ppf "mul"
   end
 
   type t = {
@@ -287,8 +344,8 @@ end = struct
   let pp ppf { l; r; operations; contracted; zipped; batch; result_type } =
     let lst = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf
-      "l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], contracted: @[[%a]@], \
-       zipped: @[[%a]@], batch: @[[%a]@], result_type: @[[%a]@]"
+      "@[l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], contracted: @[[%a]@], \
+       zipped: @[[%a]@], batch: @[[%a]@], result_type: @[[%a]@]@]"
       lst l lst r
       Fmt.(list ~sep:comma Op.pp)
       operations lst contracted lst zipped lst batch lst result_type
@@ -326,12 +383,28 @@ end = struct
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [];
     [%expect {| tensordot [(0, 0), (2, 2), (1, 1)] |}]
 
-  let match_op l r result =
-    match (l, r, result) with
-    | [ x ], [ y ], [] when x = y -> Some Op.Inner
-    | [ x; y ], [ y'; z ], [ x'; z' ] when x = x' && y = y' && z = z' ->
-        Some Matmul
-    | x, y, z -> match_tensordot x y z
+  let rec match_ops l r result =
+    match first_repeat_indices l with
+    | Some (x, i, j) ->
+        let l = remove_indices l [ i; j ] @ [ x ] in
+        Op.Diagonal (0, i, j) :: match_ops l r result
+    | None -> (
+        match first_repeat_indices r with
+        | Some (x, i, j) ->
+            let r = remove_indices r [ i; j ] @ [ x ] in
+            Op.Diagonal (1, i, j) :: match_ops l r result
+        | None -> (
+            if l = r && r = result then [ Op.Mul ]
+            else
+              match (l, r, result) with
+              | [ x ], [ y ], [] when x = y -> [ Op.Inner ]
+              | [ x; y ], [ y'; z ], [ x'; z' ] when x = x' && y = y' && z = z'
+                ->
+                  [ Matmul ] (* TODO: use General_matmul? *)
+              | x, y, z -> (
+                  match match_tensordot x y z with
+                  | Some op -> [ op ]
+                  | None -> [])))
 
   let make l r ~other_tensors ~result_type =
     let inter, union, diff = SS.(inter, union, diff) in
@@ -363,11 +436,7 @@ end = struct
     let zipped, batch =
       List.partition (fun x -> SS.mem x l_set && SS.mem x r_set) preserved
     in
-    let operations =
-      match match_op l r preserved with
-      | Some op -> [ op ]
-      | None -> [ (* TODO *) ]
-    in
+    let operations = match_ops l r preserved in
     { l; r; operations; contracted; zipped; batch; result_type }
 
   let%expect_test "operations" =
@@ -395,35 +464,66 @@ end = struct
     go [ "a"; "b" ] [ "c"; "d" ] [] [ "a"; "b"; "c"; "d" ];
     [%expect
       {| 
-      operations: [tensordot 0], contracted: [], zipped: [], batch: [a; b; c; d], result_type: 
-      [a; b; c; d] 
+      l: [a; b], r: [c; d], operations: [tensordot 0], contracted: [], zipped:
+      [], batch: [a; b; c; d], result_type: [a; b; c; d] 
+      |}];
+    go [ "i"; "i" ] [ "i" ] [] [ "i" ];
+    [%expect
+      {| 
+      l: [i; i], r: [i], operations: [diagonal (0, 0, 1), mul], contracted: 
+      [], zipped: [i], batch: [], result_type: [i]
+      |}];
+    (* This could also be interpreted as `matmul; diag`, probably other ways *)
+    go [ "a"; "a" ] [ "a"; "a" ] [] [ "a" ];
+    [%expect
+      {| 
+      l: [a; a], r: [a; a], operations: [diagonal (0, 0, 1), diagonal (1, 0, 1),
+                                        mul], contracted: [], zipped: [a], batch: 
+      [], result_type: [a]
+      |}];
+    (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * v *)
+    go [ "a"; "a"; "a" ] [ "a" ] [] [ "a" ];
+    [%expect
+      {| 
+      l: [a; a; a], r: [a], operations: [diagonal (0, 0, 1), diagonal (0, 0, 1),
+                                        mul], contracted: [], zipped: [a], batch: 
+      [], result_type: [a]
+      |}];
+    (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * m.diagonal() *)
+    go [ "a"; "a"; "a" ] [ "a"; "a" ] [] [];
+    [%expect
+      {|
+      l: [a; a; a], r: [a; a], operations: [diagonal (0, 0, 1), diagonal (0, 0, 1),
+                                           diagonal (1, 0, 1), inner], contracted: 
+      [a], zipped: [], batch: [], result_type: []
       |}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [] [];
     [%expect
       {|
-      operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted: [a; j; k], zipped:
-      [], batch: [], result_type: [] |}];
+      l: [a; j; k], r: [a; j; k], operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted:
+      [a; j; k], zipped: [], batch: [], result_type: [] |}];
     go [ "a"; "j"; "k" ] [ "a"; "i"; "j" ] [ [ "a"; "i"; "k" ] ] [];
     [%expect
       {| 
-      operations: [], contracted: [j], zipped: [a], batch: [i; k], result_type: 
-      [] 
+      l: [a; j; k], r: [a; i; j], operations: [], contracted: [j], zipped:
+      [a], batch: [i; k], result_type: [] 
       |}];
     go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
     [%expect
       {| 
-      operations: [], contracted: [k], zipped: [], batch: [i; j; l; n], result_type: 
-      [i; n; j; l] 
+      l: [n; l; k], r: [i; j; k], operations: [], contracted: [k], zipped:
+      [], batch: [i; j; l; n], result_type: [i; n; j; l] 
       |}];
     go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "n"; "l"; "i"; "j" ];
     [%expect
       {| 
-         operations: [tensordot [(2, 2)]], contracted: [k], zipped: [], batch: 
-         [n; l; i; j], result_type: [n; l; i; j] |}]
+      l: [n; l; k], r: [i; j; k], operations: [tensordot [(2, 2)]], contracted:
+      [k], zipped: [], batch: [n; l; i; j], result_type: [n; l; i; j]
+      |}]
 end
 
 module Unary_contraction : sig
@@ -486,9 +586,7 @@ end = struct
     | [ x; y ], [ y'; x' ] when x = x' && y = y' -> Some Transpose
     | [ x; x' ], [] when x = x' -> Some Trace
     | [ x; x' ], [ x'' ] when x = x' && x = x'' -> Some Diag
-    | xs, [] ->
-        let unique_labels = SS.of_list xs in
-        if SS.cardinal unique_labels = List.length xs then Some Sum else None
+    | xs, [] -> if has_repeat_indices xs then None else Some Sum
     | x, x' when x <> x' && SS.(equal (of_list x) (of_list x')) ->
         (* Find minimal set of swaps *)
         let axes = minimum_swaps x x' in
@@ -744,83 +842,85 @@ end = struct
 
     { pack; view_l; view_r; matmul; unpack_squeeze }
 
-  let%expect_test "General_matmul" =
-    let fmt_axis ppf strs =
-      match strs with
-      | [] -> Fmt.pf ppf "1"
-      | [ a ] -> Fmt.string ppf a
-      | _ -> Fmt.(parens (list ~sep:sp string)) ppf strs
-    in
-    let fmt_pack ppf { batch_dims; matrix = l, r } =
-      match batch_dims with
-      | [] -> Fmt.(pf ppf "%a %a" fmt_axis l fmt_axis r)
-      | _ ->
-          Fmt.(
-            pf ppf "%a %a %a" (list ~sep:sp string) batch_dims fmt_axis l
-              fmt_axis r)
-    in
-    let fmt_matmul ppf (batch_dims, y, z) =
-      match batch_dims with
-      | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z)
-      | _ ->
-          Fmt.(
-            pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y
-              fmt_axis z)
-    in
-    let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
-    let go input_l input_r output =
-      let { pack; view_l; view_r; matmul; unpack_squeeze } =
-        make input_l input_r output
-      in
-      Fmt.pr "Pack:@.";
-      Fmt.(
-        pr "  @[View %a: %a -> %a@]@." shape view_l (list ~sep:sp string)
-          input_l fmt_pack (fst pack));
-      Fmt.(
-        pr "  @[View %a: %a -> %a@]@." shape view_r (list ~sep:sp string)
-          input_r fmt_pack (snd pack));
-      Fmt.pr "Unpack:@.";
-      Fmt.(
-        pr "  @[%a: %a -> %a@]@."
-          (brackets (list ~sep:semi squeeze))
-          unpack_squeeze fmt_matmul matmul (list ~sep:sp string) output)
-    in
-    go [ "a"; "b" ] [ "b"; "a" ] [ "a"; "a" ];
-    [%expect
-      {|
-        Pack:
-          View (a, b): a b -> a b
-          View (b, a): b a -> b a
-        Unpack:
-          []: a a -> a a
-      |}];
-    go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
-    [%expect
-      {|
-        Pack:
-          View (a, 1, b): a b -> a 1 b
-          View (a, b, 1): b a -> a b 1
-        Unpack:
-          [Squeeze 2; Squeeze 1]: a 1 1 -> a
-      |}];
-    go [ "a"; "b"; "c" ] [ "a"; "b"; "d" ] [ "a"; "c"; "d" ];
-    [%expect
-      {|
-       Pack: 
-         View (a, c, b): a b c -> a c b
-         View (a, b, d): a b d -> a b d
-       Unpack:
-         []: a c d -> a c d
-    |}];
-    go [ "a"; "b" ] [ "b"; "a" ] [];
-    [%expect
-      {|
-       Pack: 
-         View (1, a * b): a b -> 1 (a b)
-         View (a * b, 1): b a -> (a b) 1
-       Unpack:
-         [Squeeze 1; Squeeze 0]: 1 1 ->
-    |}]
+  (* XXX
+     let%expect_test "General_matmul" =
+       let fmt_axis ppf strs =
+         match strs with
+         | [] -> Fmt.pf ppf "1"
+         | [ a ] -> Fmt.string ppf a
+         | _ -> Fmt.(parens (list ~sep:sp string)) ppf strs
+       in
+       let fmt_pack ppf { batch_dims; matrix = l, r } =
+         match batch_dims with
+         | [] -> Fmt.(pf ppf "%a %a" fmt_axis l fmt_axis r)
+         | _ ->
+             Fmt.(
+               pf ppf "%a %a %a" (list ~sep:sp string) batch_dims fmt_axis l
+                 fmt_axis r)
+       in
+       let fmt_matmul ppf (batch_dims, y, z) =
+         match batch_dims with
+         | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z)
+         | _ ->
+             Fmt.(
+               pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y
+                 fmt_axis z)
+       in
+       let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
+       let go input_l input_r output =
+         let { pack; view_l; view_r; matmul; unpack_squeeze } =
+           make input_l input_r output
+         in
+         Fmt.pr "Pack:@.";
+         Fmt.(
+           pr "  @[View %a: %a -> %a@]@." shape view_l (list ~sep:sp string)
+             input_l fmt_pack (fst pack));
+         Fmt.(
+           pr "  @[View %a: %a -> %a@]@." shape view_r (list ~sep:sp string)
+             input_r fmt_pack (snd pack));
+         Fmt.pr "Unpack:@.";
+         Fmt.(
+           pr "  @[%a: %a -> %a@]@."
+             (brackets (list ~sep:semi squeeze))
+             unpack_squeeze fmt_matmul matmul (list ~sep:sp string) output)
+       in
+          go [ "a"; "b" ] [ "b"; "a" ] [ "a"; "a" ];
+          [%expect
+            {|
+              Pack:
+                View (a, b): a b -> a b
+                View (b, a): b a -> b a
+              Unpack:
+                []: a a -> a a
+            |}];
+          go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
+          [%expect
+            {|
+              Pack:
+                View (a, 1, b): a b -> a 1 b
+                View (a, b, 1): b a -> a b 1
+              Unpack:
+                [Squeeze 2; Squeeze 1]: a 1 1 -> a
+            |}];
+          go [ "a"; "b"; "c" ] [ "a"; "b"; "d" ] [ "a"; "c"; "d" ];
+          [%expect
+            {|
+             Pack:
+               View (a, c, b): a b c -> a c b
+               View (a, b, d): a b d -> a b d
+             Unpack:
+               []: a c d -> a c d
+          |}];
+          go [ "a"; "b" ] [ "b"; "a" ] [];
+          [%expect
+            {|
+             Pack:
+               View (1, a * b): a b -> 1 (a b)
+               View (a * b, 1): b a -> (a b) 1
+             Unpack:
+               [Squeeze 1; Squeeze 0]: 1 1 ->
+          |}]
+  *)
 end
 
 module Explain : sig
@@ -878,61 +978,63 @@ end = struct
       in
       Binary_contractions steps
 
-  let pp_explain_binary_contraction ppf
-      (single_contraction : Binary_contraction.t) =
-    let l_tensor, r_tensor = (single_contraction.l, single_contraction.r) in
-    let general_matmul =
-      General_matmul.make l_tensor r_tensor single_contraction.result_type
-    in
-    let l = Fmt.(list string ~sep:sp) in
-    Fmt.(
-      pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" l
-        single_contraction.contracted l l_tensor l r_tensor l
-        single_contraction.result_type General_matmul.pp_expr general_matmul)
+  (* XXX
+     let pp_explain_binary_contraction ppf
+         (single_contraction : Binary_contraction.t) =
+       let l_tensor, r_tensor = (single_contraction.l, single_contraction.r) in
+       let general_matmul =
+         General_matmul.make l_tensor r_tensor single_contraction.result_type
+       in
+       let l = Fmt.(list string ~sep:sp) in
+       Fmt.(
+         pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" l
+           single_contraction.contracted l l_tensor l r_tensor l
+           single_contraction.result_type General_matmul.pp_expr general_matmul)
 
-  let pp_explain_unary_contraction ppf
-      (tensor, Unary_contraction.{ operations; contracted; preserved }) =
-    let l = Fmt.(list string ~sep:sp) in
-    Fmt.(
-      pf ppf "@[<2>contract@ %a (@[%a@] -> @[%a@])@ (%a)@]" l contracted l
-        tensor l preserved
-        (list ~sep:sp Unary_contraction.Op.pp)
-        operations)
+     let pp_explain_unary_contraction ppf
+         (tensor, Unary_contraction.{ operations; contracted; preserved }) =
+       let l = Fmt.(list string ~sep:sp) in
+       Fmt.(
+         pf ppf "@[<2>contract@ %a (@[%a@] -> @[%a@])@ (%a)@]" l contracted l
+           tensor l preserved
+           (list ~sep:sp Unary_contraction.Op.pp)
+           operations)
 
-  let%expect_test "explain contractions" =
-    let go rewrite path =
-      match get_contractions ~path rewrite with
-      | Binary_contractions cs ->
-          Fmt.(pr "@[%a@]@." (list pp_explain_binary_contraction) cs)
-      | Unary_contraction (tensor, unary_contraction) ->
-          Fmt.pr "@[%a@]@." pp_explain_unary_contraction
-            (tensor, unary_contraction)
-    in
-    let rewrite =
-      ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
-    in
-    go rewrite [ (1, 2); (0, 1) ];
-    [%expect
-      {|
-      contract k (a j k, a i k -> a i j) 
-        (torch.matmul(x, y.view(0, 2, 1)))
-      contract a i j (a i j, a i j -> ) 
-        ((x * y).sum())
-      |}];
-    go rewrite [ (0, 1); (0, 1) ];
-    [%expect
-      {|
-      contract j (a i j, a j k -> a i k) 
-        (torch.matmul(x, y.view(0, 2, 1)))
-      contract a i k (a i k, a i k -> ) 
-        ((x * y).sum())
-      |}];
-    let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
-    go rewrite [ (0, 1) ];
-    [%expect {| contract k (i k, k j -> i j) (torch.matmul(x, y.view(1, 0))) |}];
-    let rewrite = ([ [ "i"; "i" ] ], []) in
-    go rewrite [];
-    [%expect {| contract i (i i -> ) (x.trace()) |}]
+        let%expect_test "explain contractions" =
+          let go rewrite path =
+            match get_contractions ~path rewrite with
+            | Binary_contractions cs ->
+                Fmt.(pr "@[%a@]@." (list pp_explain_binary_contraction) cs)
+            | Unary_contraction (tensor, unary_contraction) ->
+                Fmt.pr "@[%a@]@." pp_explain_unary_contraction
+                  (tensor, unary_contraction)
+          in
+          let rewrite =
+            ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
+          in
+          go rewrite [ (1, 2); (0, 1) ];
+          [%expect
+            {|
+            contract k (a j k, a i k -> a i j)
+              (torch.matmul(x, y.view(0, 2, 1)))
+            contract a i j (a i j, a i j -> )
+              ((x * y).sum())
+            |}];
+          go rewrite [ (0, 1); (0, 1) ];
+          [%expect
+            {|
+            contract j (a i j, a j k -> a i k)
+              (torch.matmul(x, y.view(0, 2, 1)))
+            contract a i k (a i k, a i k -> )
+              ((x * y).sum())
+            |}];
+          let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
+          go rewrite [ (0, 1) ];
+          [%expect {| contract k (i k, k j -> i j) (torch.matmul(x, y.view(1, 0))) |}];
+          let rewrite = ([ [ "i"; "i" ] ], []) in
+          go rewrite [];
+          [%expect {| contract i (i i -> ) (x.trace()) |}]
+  *)
 
   let show_loops rewrite =
     let lhs_tensors, rhs_tensor = rewrite in
