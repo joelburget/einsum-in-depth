@@ -38,120 +38,138 @@ end = struct
   let pp = Fmt.(box (pair ~sep:(any " -> ") Bindings.pp Group.pp))
 end
 
-(** Given a list of strings, find a maximal set of matching indices, where each position in a list can only match once (in the case of duplicates either match is okay). The lists are not necessarily the same length. *)
-let find_matches lst1 lst2 =
-  let h1 = Hashtbl.create 10 in
-  let h2 = Hashtbl.create 10 in
+module Find_matches_impl : sig
+  val find_matches : string list -> string list -> (string * int * int) list
+  (** Given a list of strings, find a maximal set of matching indices, where each position in a list can only match once (in the case of duplicates either match is okay). The lists are not necessarily the same length. *)
+end = struct
+  let find_matches lst1 lst2 =
+    let h1 = Hashtbl.create 10 in
+    let h2 = Hashtbl.create 10 in
 
-  let add_to_hashtbl h lst =
-    List.iteri
-      (fun i x ->
-        if Hashtbl.mem h x then Hashtbl.replace h x (i :: Hashtbl.find h x)
-        else Hashtbl.add h x [ i ])
-      lst
-  in
+    let add_to_hashtbl h lst =
+      List.iteri
+        (fun i x ->
+          if Hashtbl.mem h x then Hashtbl.replace h x (i :: Hashtbl.find h x)
+          else Hashtbl.add h x [ i ])
+        lst
+    in
 
-  add_to_hashtbl h1 lst1;
-  add_to_hashtbl h2 lst2;
+    add_to_hashtbl h1 lst1;
+    add_to_hashtbl h2 lst2;
 
-  let matches = ref [] in
+    let matches = ref [] in
 
-  Hashtbl.iter
-    (fun k v1 ->
-      if Hashtbl.mem h2 k then
-        let v2 = Hashtbl.find h2 k in
-        let match_pairs = List.map2 (fun x y -> (k, x, y)) v1 v2 in
-        matches := List.append !matches match_pairs)
-    h1;
+    Hashtbl.iter
+      (fun k v1 ->
+        if Hashtbl.mem h2 k then
+          let v2 = Hashtbl.find h2 k in
+          let match_pairs = List.map2 (fun x y -> (k, x, y)) v1 v2 in
+          matches := List.append !matches match_pairs)
+      h1;
 
-  !matches
+    !matches
 
-let%expect_test "find_matches" =
-  let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%s, %d, %d)" a b c in
-  let go lst1 lst2 =
-    let result = find_matches lst1 lst2 in
-    Fmt.pr "@[[%a]@], @[[%a]@] -> @[[%a]@]@."
-      Fmt.(list ~sep:semi string)
-      lst1
-      Fmt.(list ~sep:semi string)
-      lst2
-      Fmt.(list ~sep:semi pp_triple)
-      result
-  in
-  go [ "a"; "b"; "c" ] [ "b"; "a"; "c" ];
-  [%expect {| [a; b; c], [b; a; c] -> [(a, 0, 1); (b, 1, 0); (c, 2, 2)]|}];
-  go [ "a"; "b" ] [ "b"; "c"; "a" ];
-  [%expect {| [a; b], [b; c; a] -> [(a, 0, 2); (b, 1, 0)]|}];
-  go [ "a"; "a" ] [ "a"; "a" ];
-  [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}];
-  go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ];
-  [%expect {| [a; j; k], [a; j; k] -> [(a, 0, 0); (k, 2, 2); (j, 1, 1)]|}]
+  let%expect_test "find_matches" =
+    let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%s, %d, %d)" a b c in
+    let go lst1 lst2 =
+      let result = find_matches lst1 lst2 in
+      Fmt.pr "@[[%a]@], @[[%a]@] -> @[[%a]@]@."
+        Fmt.(list ~sep:semi string)
+        lst1
+        Fmt.(list ~sep:semi string)
+        lst2
+        Fmt.(list ~sep:semi pp_triple)
+        result
+    in
+    go [ "a"; "b"; "c" ] [ "b"; "a"; "c" ];
+    [%expect {| [a; b; c], [b; a; c] -> [(a, 0, 1); (b, 1, 0); (c, 2, 2)]|}];
+    go [ "a"; "b" ] [ "b"; "c"; "a" ];
+    [%expect {| [a; b], [b; c; a] -> [(a, 0, 2); (b, 1, 0)]|}];
+    go [ "a"; "a" ] [ "a"; "a" ];
+    [%expect {| [a; a], [a; a] -> [(a, 1, 1); (a, 0, 0)]|}];
+    go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ];
+    [%expect {| [a; j; k], [a; j; k] -> [(a, 0, 0); (k, 2, 2); (j, 1, 1)]|}]
+end
 
-(* We can simplify a list of matches into a single index if the count from
-   the end of a and the beginning of b simultaneously (and only contain up to
-   two matches). *)
-let matches_simplify matches len_x =
-  List.length matches <= 2
-  && List.for_all
-       (fun (_, a, b) -> (b = 0 || b = 1) && len_x - a - 1 = b)
-       matches
+open Find_matches_impl
 
-let%expect_test "matches_simplify" =
-  let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%s, %d, %d)" a b c in
-  let go matches len_x =
-    Fmt.pr "@[[%a] -> %b@]@."
-      Fmt.(list ~sep:semi pp_triple)
-      matches
-      (matches_simplify matches len_x)
-  in
-  go [] 2;
-  [%expect {| [] -> true|}];
-  go [ ("a", 1, 0); ("b", 0, 1) ] 2;
-  [%expect {| [(a, 1, 0); (b, 0, 1)] -> true|}];
-  go [ ("a", 0, 0) ] 2;
-  [%expect {| [(a, 0, 0)] -> false|}];
-  go [ ("a", 1, 1) ] 2;
-  [%expect {| [(a, 1, 1)] -> false|}];
-  go [ ("a", 0, 1); ("b", 1, 0) ] 2;
-  [%expect {| [(a, 0, 1); (b, 1, 0)] -> true|}];
-  go [ ("a", 0, 1); ("b", 1, 0) ] 3;
-  [%expect {| [(a, 0, 1); (b, 1, 0)] -> false|}];
-  go [ ("a", 1, 1); ("b", 2, 0) ] 3;
-  [%expect {| [(a, 1, 1); (b, 2, 0)] -> true|}];
-  go [ ("a", 0, 2) ] 3;
-  [%expect {| [(a, 0, 2)] -> false|}]
+module Matches_simplify_impl : sig
+  val matches_simplify : (string * int * int) list -> int -> bool
+  (** We can simplify a list of matches into a single index if the count from
+     the end of a and the beginning of b simultaneously (and only contain up to
+     two matches). *)
+end = struct
+  let matches_simplify matches len_x =
+    List.length matches <= 2
+    && List.for_all
+         (fun (_, a, b) -> (b = 0 || b = 1) && b = len_x - a - 1)
+         matches
 
-(* Remove list elements at the given indices *)
-let remove_indices lst indices =
-  let rec go lst indices acc =
-    match (lst, indices) with
-    | [], _ -> List.rev acc
-    | _, [] -> List.rev_append acc lst
-    | x :: xs, i :: is ->
-        if i = 0 then go xs (List.map pred is) acc
-        else go xs (List.map pred indices) (x :: acc)
-  in
-  go lst (List.sort compare indices) []
+  let%expect_test "matches_simplify" =
+    let pp_triple ppf (a, b, c) = Fmt.pf ppf "(%s, %d, %d)" a b c in
+    let go matches len_x =
+      Fmt.pr "@[[%a] -> %b@]@."
+        Fmt.(list ~sep:semi pp_triple)
+        matches
+        (matches_simplify matches len_x)
+    in
+    go [] 2;
+    [%expect {| [] -> true|}];
+    go [ ("a", 1, 0); ("b", 0, 1) ] 2;
+    [%expect {| [(a, 1, 0); (b, 0, 1)] -> true|}];
+    go [ ("a", 0, 0) ] 2;
+    [%expect {| [(a, 0, 0)] -> false|}];
+    go [ ("a", 1, 1) ] 2;
+    [%expect {| [(a, 1, 1)] -> false|}];
+    go [ ("a", 0, 1); ("b", 1, 0) ] 2;
+    [%expect {| [(a, 0, 1); (b, 1, 0)] -> true|}];
+    go [ ("a", 0, 1); ("b", 1, 0) ] 3;
+    [%expect {| [(a, 0, 1); (b, 1, 0)] -> false|}];
+    go [ ("a", 1, 1); ("b", 2, 0) ] 3;
+    [%expect {| [(a, 1, 1); (b, 2, 0)] -> true|}];
+    go [ ("a", 0, 2) ] 3;
+    [%expect {| [(a, 0, 2)] -> false|}]
+end
 
-let%expect_test "remove_indices" =
-  let go lst indices =
-    Fmt.(
-      pr "@[[%a] - [%a] -> [%a]@]@." (list ~sep:comma int) lst
-        (list ~sep:comma int) indices (list ~sep:comma int)
-        (remove_indices lst indices))
-  in
-  go [] [];
-  [%expect {| [] - [] -> []|}];
-  go [] [ 0 ];
-  [%expect {| [] - [0] -> []|}];
-  go [ 1 ] [ 0 ];
-  [%expect {| [1] - [0] -> []|}];
-  go [ 1; 2; 3 ] [ 0; 1 ];
-  [%expect {| [1, 2, 3] - [0, 1] -> [3]|}];
-  go [ 1; 2; 3 ] [ 1; 0 ];
-  [%expect {| [1, 2, 3] - [1, 0] -> [3]|}];
-  go [ 1; 2; 3; 4; 5; 6 ] [ 0; 2; 4 ];
-  [%expect {| [1, 2, 3, 4, 5, 6] - [0, 2, 4] -> [2, 4, 6]|}]
+open Matches_simplify_impl
+
+module Remove_indices_impl : sig
+  val remove_indices : 'a list -> int list -> 'a list
+  (** Remove list elements at the given indices *)
+end = struct
+  let remove_indices lst indices =
+    let rec go lst indices acc =
+      match (lst, indices) with
+      | [], _ -> List.rev acc
+      | _, [] -> List.rev_append acc lst
+      | x :: xs, i :: is ->
+          if i = 0 then go xs (List.map pred is) acc
+          else go xs (List.map pred indices) (x :: acc)
+    in
+    go lst (List.sort compare indices) []
+
+  let%expect_test "remove_indices" =
+    let go lst indices =
+      Fmt.(
+        pr "@[[%a] - [%a] -> [%a]@]@." (list ~sep:comma int) lst
+          (list ~sep:comma int) indices (list ~sep:comma int)
+          (remove_indices lst indices))
+    in
+    go [] [];
+    [%expect {| [] - [] -> []|}];
+    go [] [ 0 ];
+    [%expect {| [] - [0] -> []|}];
+    go [ 1 ] [ 0 ];
+    [%expect {| [1] - [0] -> []|}];
+    go [ 1; 2; 3 ] [ 0; 1 ];
+    [%expect {| [1, 2, 3] - [0, 1] -> [3]|}];
+    go [ 1; 2; 3 ] [ 1; 0 ];
+    [%expect {| [1, 2, 3] - [1, 0] -> [3]|}];
+    go [ 1; 2; 3; 4; 5; 6 ] [ 0; 2; 4 ];
+    [%expect {| [1, 2, 3, 4, 5, 6] - [0, 2, 4] -> [2, 4, 6]|}]
+end
+
+open Remove_indices_impl
 
 module Minimum_swaps_impl : sig
   val minimum_swaps : 'a. 'a list -> 'a list -> (int * int) list
