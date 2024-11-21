@@ -253,8 +253,25 @@ let explain container contraction_str path_str =
               txt'
                 "Einsum notation is a compact and intuitive way to write many \
                  linear algebra operations: matrix multiplication, dot / \
-                 Frobenius product, transpose, trace, as well as many more \
-                 complex operations which don't have a name.";
+                 Frobenius product";
+              info
+                (span
+                   [
+                     txt' "The ";
+                     a "https://math.stackexchange.com/a/4858481/657087"
+                       "Frobenius product";
+                     txt'
+                       "generalizes the dot product from vectors to matrices. \
+                        A dot product takes two vectors of the same shape and \
+                        returns a scalar. The Frobenius product takes two \
+                        matrices of the same shape and returns a scalar. This \
+                        can be generalized further by taking two tensors of \
+                        the same shape (of arbitrary dimension), pointwise \
+                        multiplying them, and summing over each element.";
+                   ]);
+              txt'
+                ", transpose, trace, as well as many more complex operations \
+                 which don't have a name.";
             ];
           p
             [
