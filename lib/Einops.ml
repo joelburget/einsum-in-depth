@@ -223,7 +223,9 @@ module Binary_contraction : sig
   module Op : sig
     type t =
       | Tensordot1 of int
+          (** Tensordot operation with the number of dimensions to contract *)
       | Tensordot2 of (int * int) list
+          (** Tensordot operation with an explicit list of dimensions to contract *)
       | Matmul
       | Inner
 
@@ -302,7 +304,7 @@ end = struct
       remove_indices x (List.map (fun (_, i, _) -> i) matches)
       @ remove_indices y (List.map (fun (_, _, i) -> i) matches)
     in
-    if List.(equal String.equal remainder z) then
+    if List.equal String.equal remainder z then
       match matches with
       | [] -> Some (Op.Tensordot1 0)
       | _ ->
@@ -324,12 +326,12 @@ end = struct
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [];
     [%expect {| tensordot [(0, 0), (2, 2), (1, 1)] |}]
 
-  let match_op contracted_tensors result =
-    match (contracted_tensors, result) with
-    | ([ x ], [ y ]), [] when x = y -> Some Op.Inner
-    | ([ x; y ], [ y'; z ]), [ x'; z' ] when x = x' && y = y' && z = z' ->
+  let match_op l r result =
+    match (l, r, result) with
+    | [ x ], [ y ], [] when x = y -> Some Op.Inner
+    | [ x; y ], [ y'; z ], [ x'; z' ] when x = x' && y = y' && z = z' ->
         Some Matmul
-    | (x, y), z -> match_tensordot x y z
+    | x, y, z -> match_tensordot x y z
 
   let make l r ~other_tensors ~result_type =
     let inter, union, diff = SS.(inter, union, diff) in
@@ -362,7 +364,7 @@ end = struct
       List.partition (fun x -> SS.mem x l_set && SS.mem x r_set) preserved
     in
     let operations =
-      match match_op (l, r) preserved with
+      match match_op l r preserved with
       | Some op -> [ op ]
       | None -> [ (* TODO *) ]
     in
