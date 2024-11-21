@@ -819,7 +819,7 @@ end
 module Explain : sig
   type contraction =
     | Unary_contraction of string list * Unary_contraction.t
-    | Binary_contraction of (string list * string list) * Binary_contraction.t
+    | Binary_contraction of string list * string list * Binary_contraction.t
 
   val get_contractions : ?path:(int * int) list -> Rewrite.t -> contraction list
   (** Get the contractions along the given path. *)
@@ -829,7 +829,7 @@ module Explain : sig
 end = struct
   type contraction =
     | Unary_contraction of string list * Unary_contraction.t
-    | Binary_contraction of (string list * string list) * Binary_contraction.t
+    | Binary_contraction of string list * string list * Binary_contraction.t
 
   let get_contractions ?path (bindings, result_group) =
     let n_tensors = List.length bindings in
@@ -869,13 +869,13 @@ end = struct
                  ~result_type:result_group
              in
              ( new_tensors,
-               List.append steps [ Binary_contraction ((cl, cr), step) ] ))
+               List.append steps [ Binary_contraction (cl, cr, step) ] ))
            (bindings, [])
       |> snd
 
   let pp_explain_binary_contraction ppf
-      (((l_tensor, r_tensor), single_contraction) :
-        (string list * string list) * Binary_contraction.t) =
+      ((l_tensor, r_tensor, single_contraction) :
+        string list * string list * Binary_contraction.t) =
     let general_matmul =
       General_matmul.make l_tensor r_tensor single_contraction.result_type
     in
@@ -898,8 +898,8 @@ end = struct
     let go rewrite path =
       get_contractions ~path rewrite
       |> List.iter (function
-           | Binary_contraction (tensors, c) ->
-               Fmt.pr "@[%a@]@." pp_explain_binary_contraction (tensors, c)
+           | Binary_contraction (l, r, c) ->
+               Fmt.pr "@[%a@]@." pp_explain_binary_contraction (l, r, c)
            | Unary_contraction (tensor, unary_contraction) ->
                Fmt.pr "@[%a@]@." pp_explain_unary_contraction
                  (tensor, unary_contraction))
