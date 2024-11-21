@@ -98,28 +98,58 @@ let explain container contraction_str path_str =
   let f path rewrite =
     let contractions = Einops.Explain.get_contractions ?path rewrite in
     let show_step_no = List.length contractions > 1 in
+    Brr.Console.log [ Jv.of_string "contractions"; List.length contractions ];
     let steps =
       List.mapi
         (fun i contraction ->
-          let contracted, contraction_type, operation =
-            Einops.Explain.contraction contraction
-          in
-          div
-            [
-              span
+          match contraction with
+          | Einops.Explain.Unary_contraction _ ->
+              div [ txt' "Unary contraction (TODO)" ]
+          | Binary_contraction (tensors, contraction) ->
+              let l_tensor, r_tensor = tensors in
+              let Einops.Explain.{ result_type; general_matmul } =
+                Einops.Explain.explain_binary_contraction tensors contraction
+              in
+              div
                 [
-                  txt'
-                    (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
-                ];
-              span [ txt' "Contract " ];
-              code [ txt' contracted ];
-              span [ txt' " (" ];
-              code [ txt' contraction_type ];
-              span [ txt' ") (in Pytorch this would be " ];
-              code [ txt' operation ];
-              span [ txt' ")." ];
-              Tensor_diagram.draw_contraction contraction;
-            ])
+                  span
+                    [
+                      txt'
+                        (if show_step_no then Fmt.str "Step %d: " (i + 1)
+                         else "");
+                    ];
+                  span [ txt' "Contract " ];
+                  code
+                    [
+                      txt'
+                        Fmt.(
+                          str "%a" (list string ~sep:sp) contraction.contracted);
+                    ];
+                  span [ txt' " (" ];
+                  code
+                    [
+                      txt'
+                        Fmt.(
+                          str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp)
+                            l_tensor (list string ~sep:sp) r_tensor
+                            (list string ~sep:sp) result_type);
+                    ];
+                  span [ txt' ") (in Pytorch this would be " ];
+                  code
+                    [
+                      txt'
+                        Fmt.(
+                          str "%a" Einops.General_matmul.pp_expr general_matmul);
+                    ];
+                  span [ txt' ")." ];
+                  Tensor_diagram.draw_contraction tensors contraction;
+                  info
+                    (div
+                       [
+                         h2 [ txt' "Interpreting a Tensor Diagram" ];
+                         p [ txt' "" ];
+                       ]);
+                ])
         contractions
     in
     let pyloops = Einops.Explain.show_loops rewrite in
@@ -221,11 +251,22 @@ let explain container contraction_str path_str =
             [
               txt'
                 "At the highest level, an einsum string describes the shapes \
-                 of each of the input tensors and the output tensor, by \
-                 labeling each axis of each tensor. Whenever a label is \
-                 repeated, it's summed, whereas if a label only appears once, \
-                 it's not summed. (Repeated labels on the same tensor take the \
-                 diagonal.)";
+                 of each of the input tensors";
+              info
+                (span
+                   [
+                     txt'
+                       "A tensor is the generalization of a vector or matrix \
+                        to any number of dimensions. A vector is a \
+                        one-dimensional tensor. A matrix is a two-dimensional \
+                        tensor. A tensor can be three, four, or more \
+                        dimensions.";
+                   ]);
+              txt'
+                " and the output tensor, by labeling each axis of each tensor. \
+                 Whenever a label is repeated, it's summed, whereas if a label \
+                 only appears once, it's not summed. (Repeated labels on the \
+                 same tensor take elements on the diagonal.)";
             ];
           div [ txt' "Choose an example: "; selector ];
           div
@@ -283,7 +324,18 @@ let explain container contraction_str path_str =
                            "In this tool, you can specify the path as a list \
                             of pairs of integers, separated by commas. For \
                             example, ";
-                         code [ txt' "(0, 1), (1, 2)" ];
+                         code [ txt' "(1, 2), (0, 1)" ];
+                         txt'
+                           " means that (if there are three tensors) the \
+                            second two are reduced first, then (of the tensors \
+                            remaining) the first two are reduced. (The last \
+                            path element must be (0, 1) because those are the \
+                            only tensors remaining after all the others have \
+                            been reduced.) If no order is specified, we \
+                            repeatedly reduce the first two elements. In other \
+                            words, the default path is ";
+                         code [ txt' "(0, 1) * (n_tensors - 1)" ];
+                         txt' ".";
                        ];
                    ]);
               path_err_elem;

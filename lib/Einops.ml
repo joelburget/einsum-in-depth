@@ -1,4 +1,5 @@
 module String_set = Set.Make (String)
+module SS = String_set
 
 (** A Group is the set of indices of a tensor. *)
 module Group = struct
@@ -17,20 +18,20 @@ end
 (** A Rewrite binds some groups of tensor indices and results in some tensor indices. *)
 module Rewrite : sig
   type t = Bindings.t * Group.t
-  type indices = { free : String_set.t; summation : String_set.t }
+  type indices = { free : SS.t; summation : SS.t }
 
   val indices : t -> indices
-  val free_indices : t -> String_set.t
-  val summation_indices : t -> String_set.t
+  val free_indices : t -> SS.t
+  val summation_indices : t -> SS.t
   val pp : t Fmt.t
 end = struct
   type t = Bindings.t * Group.t
-  type indices = { free : String_set.t; summation : String_set.t }
+  type indices = { free : SS.t; summation : SS.t }
 
   let indices (lhs, rhs) =
-    let lhs' = lhs |> List.flatten |> String_set.of_list in
-    let rhs' = rhs |> String_set.of_list in
-    { free = rhs'; summation = String_set.diff lhs' rhs' }
+    let lhs' = lhs |> List.flatten |> SS.of_list in
+    let rhs' = rhs |> SS.of_list in
+    { free = rhs'; summation = SS.diff lhs' rhs' }
 
   let free_indices t = (indices t).free
   let summation_indices t = (indices t).summation
@@ -152,6 +153,54 @@ let%expect_test "remove_indices" =
   go [ 1; 2; 3; 4; 5; 6 ] [ 0; 2; 4 ];
   [%expect {| [1, 2, 3, 4, 5, 6] - [0, 2, 4] -> [2, 4, 6]|}]
 
+module Minimum_swaps_impl : sig
+  val minimum_swaps : 'a. 'a list -> 'a list -> (int * int) list
+end = struct
+  let minimum_swaps xs ys =
+    let visited = Array.make (List.length xs) false in
+    let result = Queue.create () in
+    for i = 0 to List.length xs - 1 do
+      if visited.(i) then ()
+      else
+        let j_ref = ref i in
+        let cycle = Queue.create () in
+        while not visited.(!j_ref) do
+          Queue.add !j_ref cycle;
+          visited.(!j_ref) <- true;
+          let x = List.nth xs !j_ref in
+          let new_j = List.find_index (fun y -> y = x) ys in
+          match new_j with
+          | None -> failwith "Element not found"
+          | Some j -> j_ref := j
+        done;
+        let cycle = cycle |> Queue.to_seq |> List.of_seq |> ref in
+        while List.length !cycle > 1 do
+          match !cycle with
+          | x :: y :: rest ->
+              Queue.add (x, y) result;
+              cycle := x :: rest
+          | _ -> failwith "Cycle too short"
+        done
+    done;
+    result |> Queue.to_seq |> List.of_seq
+
+  let%expect_test "minimum_swaps" =
+    let go xs ys =
+      minimum_swaps xs ys
+      |> Fmt.pr "@[%a@]@." Fmt.(list ~sep:sp (parens (pair ~sep:comma int int)))
+    in
+    go [ 0; 1; 2 ] [ 1; 0; 2 ];
+    [%expect {| (0, 1) |}];
+    go [ 0; 1; 2 ] [ 2; 1; 0 ];
+    [%expect {| (0, 2) |}];
+    go [ 0; 1; 2 ] [ 1; 2; 0 ];
+    [%expect {| (0, 2) (0, 1) |}];
+    go [ 0; 1; 2; 3 ] [ 1; 0; 3; 2 ];
+    [%expect {| (0, 1) (2, 3) |}]
+end
+
+open Minimum_swaps_impl
+
 module Binary_contraction : sig
   module Op : sig
     type t =
@@ -164,16 +213,27 @@ module Binary_contraction : sig
   end
 
   type t = {
-    operations : Op.t list;
+    operations : Op.t list;  (** Operations to perform in order *)
     contracted : string list;
     zipped : string list;
     batch : string list;
+    result_type : string list;
   }
 
   val pp : t Fmt.t
 
-  val get_result :
-    string list * string list -> string list list -> string list -> t
+  val make :
+    string list ->
+    string list ->
+    other_tensors:string list list ->
+    result_type:string list ->
+    t
+  (** Get a binary contraction.
+
+      @param contracted_tensors The two tensors which are contracted.
+      @param other_tensors This is used to tell which dimensions won't be used later so we can contract them.
+      @param result_type The type of tensor which should be left.
+   *)
 end = struct
   module Op = struct
     type t =
@@ -197,15 +257,16 @@ end = struct
     contracted : string list;
     zipped : string list;
     batch : string list;
+    result_type : string list;
   }
 
-  let pp ppf { operations; contracted; zipped; batch } =
+  let pp ppf { operations; contracted; zipped; batch; result_type } =
     let l = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf
       "operations: @[[%a]@], contracted: @[[%a]@], zipped: @[[%a]@], batch: \
-       @[[%a]@]"
+       @[[%a]@], result_type: @[[%a]@]"
       Fmt.(list ~sep:comma Op.pp)
-      operations l contracted l zipped l batch
+      operations l contracted l zipped l batch l result_type
 
   (* Try matching two inputs and an output to a tensordot operation *)
   let match_tensordot x y z =
@@ -247,96 +308,108 @@ end = struct
         Some Matmul
     | (x, y), z -> match_tensordot x y z
 
-  let get_result contracted_tensors other_tensors eventual_result =
-    let open String_set in
-    let cl, cr = contracted_tensors in
-    let cl', cr' = (of_list cl, of_list cr) in
-    let contracted_tensors', other_tensors', eventual_result' =
-      ( [ cl; cr ] |> List.flatten |> of_list,
-        other_tensors |> List.flatten |> of_list,
-        of_list eventual_result )
+  let make cl cr ~other_tensors ~result_type =
+    let inter, union, diff = SS.(inter, union, diff) in
+    let cl', cr' = SS.(of_list cl, of_list cr) in
+    let contracted_tensors_labels, other_tensors_labels, eventual_result_labels
+        =
+      ( [ cl; cr ] |> List.flatten |> SS.of_list,
+        other_tensors |> List.flatten |> SS.of_list,
+        SS.of_list result_type )
     in
     (* Contract dimensions which aren't needed later *)
-    let contracted_set =
+    let contracted_labels =
       diff
-        (union contracted_tensors' other_tensors')
-        (union eventual_result' other_tensors')
+        (union contracted_tensors_labels other_tensors_labels)
+        (union eventual_result_labels other_tensors_labels)
     in
-    let contracted = elements contracted_set in
+    let contracted = SS.elements contracted_labels in
     (* Preserve dimensions which are needed later *)
     let preserved =
-      inter contracted_tensors' (union eventual_result' other_tensors')
+      inter contracted_tensors_labels
+        (union eventual_result_labels other_tensors_labels)
     in
     (* Maintain the order of dimensions in the result if possible so op can be Id. *)
     let preserved =
-      if preserved = eventual_result' then eventual_result
-      else elements preserved
+      if preserved = eventual_result_labels then result_type
+      else SS.elements preserved
     in
     (* An axis is a batch axis if it's in one of the inputs, zipped if in both *)
     let zipped, batch =
-      List.partition (fun x -> mem x cl' && mem x cr') preserved
+      List.partition (fun x -> SS.mem x cl' && SS.mem x cr') preserved
     in
     let operations =
-      match match_op contracted_tensors preserved with
+      match match_op (cl, cr) preserved with
       | Some op -> [ op ]
       | None -> [ (* TODO *) ]
     in
-    { operations; contracted; zipped; batch }
+    { operations; contracted; zipped; batch; result_type }
 
   let%expect_test "operations" =
-    let go contracted_tensors eventual_result =
-      let { operations; _ } =
-        get_result contracted_tensors [] eventual_result
-      in
+    let go l r result_type =
+      let { operations; _ } = make l r ~other_tensors:[] ~result_type in
       Fmt.pr "%a\n" Fmt.(list ~sep:comma Op.pp) operations
     in
-    go ([ "i" ], [ "i" ]) [];
+    go [ "i" ] [ "i" ] [];
     [%expect {| inner |}];
-    go ([ "i"; "j" ], [ "j"; "k" ]) [ "i"; "k" ];
+    go [ "i"; "j" ] [ "j"; "k" ] [ "i"; "k" ];
     [%expect {| matmul |}];
-    go ([ "a"; "b"; "c" ], [ "b"; "a"; "d" ]) [ "c"; "d" ];
+    go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
     [%expect {| tensordot [(0, 1), (1, 0)] |}];
-    go ([ "a"; "b"; "c" ], [ "c"; "b" ]) [ "a" ];
+    go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
     [%expect {| tensordot 2 |}];
-    go ([ "a"; "b"; "c" ], [ "c"; "d" ]) [ "a"; "b"; "d" ];
+    go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
     [%expect {| tensordot 1 |}];
-    go ([ "a"; "b"; "c" ], [ "d"; "e" ]) [ "a"; "b"; "c"; "d"; "e" ];
+    go [ "a"; "b"; "c" ] [ "d"; "e" ] [ "a"; "b"; "c"; "d"; "e" ];
     [%expect {| tensordot 0 |}]
 
-  let%expect_test "get_result" =
-    let go contracted_tensors other_tensors eventual_result =
-      get_result contracted_tensors other_tensors eventual_result
-      |> pp Fmt.stdout
+  let%expect_test "make" =
+    let go l r other_tensors result_type =
+      make l r ~other_tensors ~result_type |> pp Fmt.stdout
     in
-    go ([ "a"; "b" ], [ "c"; "d" ]) [] [ "a"; "b"; "c"; "d" ];
+    go [ "a"; "b" ] [ "c"; "d" ] [] [ "a"; "b"; "c"; "d" ];
     [%expect
-      {| operations: [tensordot 0], contracted: [], zipped: [], batch: [a; b; c; d] |}];
-    go ([ "a"; "j"; "k" ], [ "a"; "j"; "k" ]) [] [];
+      {| 
+      operations: [tensordot 0], contracted: [], zipped: [], batch: [a; b; c; d], result_type: 
+      [a; b; c; d] 
+      |}];
+    go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [] [];
     [%expect
       {|
-        operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted: [a; j; k], zipped:
-        [], batch: [] |}];
-    go ([ "a"; "j"; "k" ], [ "a"; "i"; "j" ]) [ [ "a"; "i"; "k" ] ] [];
-    [%expect {| operations: [], contracted: [j], zipped: [a], batch: [i; k] |}];
-    go
-      ([ "n"; "l"; "k" ], [ "i"; "j"; "k" ])
+      operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted: [a; j; k], zipped:
+      [], batch: [], result_type: [] |}];
+    go [ "a"; "j"; "k" ] [ "a"; "i"; "j" ] [ [ "a"; "i"; "k" ] ] [];
+    [%expect
+      {| 
+      operations: [], contracted: [j], zipped: [a], batch: [i; k], result_type: 
+      [] 
+      |}];
+    go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
     [%expect
-      {| operations: [], contracted: [k], zipped: [], batch: [i; j; l; n] |}];
-    go
-      ([ "n"; "l"; "k" ], [ "i"; "j"; "k" ])
+      {| 
+      operations: [], contracted: [k], zipped: [], batch: [i; j; l; n], result_type: 
+      [i; n; j; l] 
+      |}];
+    go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "n"; "l"; "i"; "j" ];
     [%expect
       {| 
          operations: [tensordot [(2, 2)]], contracted: [k], zipped: [], batch: 
-         [n; l; i; j] |}]
+         [n; l; i; j], result_type: [n; l; i; j] |}]
 end
 
 module Unary_contraction : sig
   module Op : sig
-    type t = Transpose | Trace | Sum | Diag | Swapaxes | Id
+    type t =
+      | Transpose
+      | Trace
+      | Sum
+      | Diag
+      | Swapaxes of (int * int) list
+      | Id
 
     val pp : t Fmt.t
   end
@@ -347,18 +420,27 @@ module Unary_contraction : sig
     preserved : string list;
   }
 
+  val make : contracted:string list -> result_type:string list -> t
   val pp : t Fmt.t
 end = struct
   module Op = struct
-    type t = Transpose | Trace | Sum | Diag | Swapaxes | Id
+    type t =
+      | Transpose
+      | Trace
+      | Sum
+      | Diag
+      | Swapaxes of (int * int) list
+      | Id
+
+    let pp_swap_axis ppf (a, b) = Fmt.pf ppf ".swapaxes(%d, %d)" a b
 
     let pp ppf = function
-      | Transpose -> Fmt.string ppf "transpose"
-      | Trace -> Fmt.string ppf "trace"
-      | Sum -> Fmt.string ppf "sum"
-      | Diag -> Fmt.string ppf "diag"
-      | Swapaxes -> Fmt.string ppf "swapaxes"
-      | Id -> Fmt.string ppf "id"
+      | Transpose -> Fmt.string ppf "x.transpose()"
+      | Trace -> Fmt.string ppf "x.trace()"
+      | Sum -> Fmt.string ppf "x.sum()"
+      | Diag -> Fmt.string ppf "x.diag()"
+      | Swapaxes axes -> Fmt.(pf ppf "x%a" (list ~sep:cut pp_swap_axis) axes)
+      | Id -> Fmt.string ppf "x"
   end
 
   type t = {
@@ -379,68 +461,78 @@ end = struct
     | [ x; y ], [ y'; x' ] when x = x' && y = y' -> Some Transpose
     | [ x; x' ], [] when x = x' -> Some Trace
     | [ x; x' ], [ x'' ] when x = x' && x = x'' -> Some Diag
-    | [ _ ], [] -> Some Sum
-    | x, x' when x <> x' && String_set.(equal (of_list x) (of_list x')) ->
-        Some Swapaxes
+    | xs, [] ->
+        let unique_labels = SS.of_list xs in
+        if SS.cardinal unique_labels = List.length xs then Some Sum else None
+    | x, x' when x <> x' && SS.(equal (of_list x) (of_list x')) ->
+        (* Find minimal set of swaps *)
+        let axes = minimum_swaps x x' in
+        Some (Swapaxes axes)
     | _ -> None
 
-  let get_result contracted_tensor other_tensors eventual_result =
-    let open String_set in
-    let contracted_tensor_set, other_tensors', eventual_result' =
-      ( of_list contracted_tensor,
-        other_tensors |> List.flatten |> of_list,
-        of_list eventual_result )
-    in
-    (* Contract dimensions which aren't needed later *)
-    let contracted =
-      elements
-        (diff
-           (union contracted_tensor_set other_tensors')
-           (union eventual_result' other_tensors'))
-    in
-    (* Preserve dimensions which are needed later *)
-    let preserved =
-      inter contracted_tensor_set (union eventual_result' other_tensors')
-    in
-    (* Maintain the order of dimensions in the result if possible so op can be Id. *)
-    let preserved =
-      if preserved = eventual_result' then eventual_result
-      else elements preserved
+  let make ~contracted ~result_type =
+    let open SS in
+    let contracted_labels, result_labels =
+      (SS.of_list contracted, SS.of_list result_type)
     in
     let operations =
-      match match_op contracted_tensor preserved with
+      match match_op contracted result_type with
       | Some op -> [ op ]
       | None -> [ (* TODO *) ]
     in
-    { operations; contracted; preserved }
+    {
+      operations;
+      contracted = elements (diff contracted_labels result_labels);
+      preserved = elements (inter contracted_labels result_labels);
+    }
+
+  let%expect_test "make" =
+    let go contracted result_type =
+      make ~contracted ~result_type |> pp Fmt.stdout
+    in
+    go [ "a"; "b"; "c"; "d" ] [ "a"; "b"; "c"; "d" ];
+    [%expect {| operations: [x], contracted: [], preserved: [a; b; c; d] |}];
+    go [ "i"; "i" ] [];
+    [%expect {| operations: [x.trace()], contracted: [i], preserved: [] |}];
+    go [ "i"; "i" ] [ "i" ];
+    (* XXX should i be included in contracted here? *)
+    [%expect {| operations: [x.diag()], contracted: [], preserved: [i] |}];
+    go [ "i" ] [];
+    [%expect {| operations: [x.sum()], contracted: [i], preserved: [] |}];
+    go [ "i"; "j" ] [ "j"; "i" ];
+    [%expect
+      {| operations: [x.transpose()], contracted: [], preserved: [i; j] |}];
+    go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
+    [%expect
+      {| operations: [x.swapaxes(0, 2)], contracted: [], preserved: [i; j; k] |}]
 
   let%expect_test "operations" =
-    let go contracted_tensors eventual_result =
-      let { operations; _ } =
-        get_result contracted_tensors [] eventual_result
-      in
+    let go contracted result_type =
+      let { operations; _ } = make ~contracted ~result_type in
       Fmt.pr "%a\n" Fmt.(list ~sep:comma Op.pp) operations
     in
     go [ "i" ] [ "i" ];
-    [%expect {| id |}];
+    [%expect {| x |}];
     go [ "i"; "i" ] [];
-    [%expect {| trace |}];
+    [%expect {| x.trace() |}];
     go [ "i"; "j" ] [ "i"; "j" ];
-    [%expect {| id |}];
+    [%expect {| x |}];
     go [ "i"; "j" ] [ "j"; "i" ];
-    [%expect {| transpose |}];
+    [%expect {| x.transpose() |}];
     go [ "i" ] [];
-    [%expect {| sum |}];
+    [%expect {| x.sum() |}];
+    go [ "i"; "j" ] [];
+    [%expect {| x.sum() |}];
     go [ "i"; "i" ] [ "i" ];
-    [%expect {| diag |}];
+    [%expect {| x.diag() |}];
     go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
-    [%expect {| swapaxes |}]
+    [%expect {| x.swapaxes(0, 2) |}]
 end
 
 module Pyloops = struct
   type t = {
-    free_indices : String_set.t;
-    summation_indices : String_set.t;
+    free_indices : SS.t;
+    summation_indices : SS.t;
     lhs_tensors : string list list;
     rhs_tensor : string list;
   }
@@ -448,8 +540,8 @@ module Pyloops = struct
   let mk_indent indent = String.make (indent * 4) ' '
 
   let pp ppf { free_indices; summation_indices; lhs_tensors; rhs_tensor } =
-    let free_indices = String_set.elements free_indices in
-    let summation_indices = String_set.elements summation_indices in
+    let free_indices = SS.elements free_indices in
+    let summation_indices = SS.elements summation_indices in
 
     (* initialize result *)
     (match rhs_tensor with
@@ -539,16 +631,19 @@ end
  *)
 module General_matmul : sig
   type packed = { batch_dims : string list; matrix : string list * string list }
+  (** A packed argument to a matmul consists of batch dimensions followed by two matrix dimensions. *)
 
   type t = {
-    pack : packed * packed;
+    pack : packed * packed;  (** First pack both arguments to the matmul. *)
     view_l : string list list;
-    view_r : string list list;
+        (** Instructions for packing the left tensor. Batch dimensions followed by matrix dimensions. *)
+    view_r : string list list;  (** See [view_l] *)
     matmul : string list * string list * string list;
-    unpack_squeeze : int list;
+        (** Output of matmul, before unpacking. Batch dimensions, followed by matrix dimensions. *)
+    unpack_squeeze : int list;  (** List of dimensions to squeeze. *)
   }
 
-  val explain : string list -> string list -> string list -> t
+  val make : string list -> string list -> string list -> t
   val pp_expr : t Fmt.t
 end = struct
   type packed = { batch_dims : string list; matrix : string list * string list }
@@ -560,8 +655,6 @@ end = struct
     matmul : string list * string list * string list;
     unpack_squeeze : int list;
   }
-
-  module SS = String_set
 
   let squeeze ppf i = Fmt.pf ppf ".squeeze(%d)" i
 
@@ -581,7 +674,7 @@ end = struct
     Fmt.pr "@[%a@]@." (Fmt.list squeeze) [ 1; 2; 3 ];
     [%expect {| .squeeze(1).squeeze(2).squeeze(3) |}]
 
-  let explain input_l input_r output =
+  let make input_l input_r output =
     let input_l_s, input_r_s, output_s =
       SS.(of_list input_l, of_list input_r, of_list output)
     in
@@ -652,7 +745,7 @@ end = struct
     let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
     let go input_l input_r output =
       let { pack; view_l; view_r; matmul; unpack_squeeze } =
-        explain input_l input_r output
+        make input_l input_r output
       in
       Fmt.pr "Pack:@.";
       Fmt.(
@@ -667,6 +760,15 @@ end = struct
           (brackets (list ~sep:semi squeeze))
           unpack_squeeze fmt_matmul matmul (list ~sep:sp string) output)
     in
+    go [ "a"; "b" ] [ "b"; "a" ] [ "a"; "a" ];
+    [%expect
+      {|
+        Pack:
+          View (a, b): a b -> a b
+          View (b, a): b a -> b a
+        Unpack:
+          []: a a -> a a
+      |}];
     go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
     [%expect
       {|
@@ -697,71 +799,92 @@ end = struct
 end
 
 module Explain : sig
-  val contraction :
-    (string list * string list) * Binary_contraction.t ->
-    string * string * string
-  (** Explain a single contraction step *)
+  type contraction =
+    | Unary_contraction of string list * Unary_contraction.t
+    | Binary_contraction of (string list * string list) * Binary_contraction.t
 
-  val get_contractions :
-    ?path:(int * int) list ->
-    Rewrite.t ->
-    ((string list * string list) * Binary_contraction.t) list
+  val get_contractions : ?path:(int * int) list -> Rewrite.t -> contraction list
   (** Get the contractions along the given path. *)
 
   val show_loops : Rewrite.t -> Pyloops.t
   (** Put in [Pyloops.t] format. *)
 end = struct
+  type contraction =
+    | Unary_contraction of string list * Unary_contraction.t
+    | Binary_contraction of (string list * string list) * Binary_contraction.t
+
   let get_contractions ?path (bindings, result_group) =
     let n_tensors = List.length bindings in
-    let path =
-      match path with
-      | Some [] | None -> List.init (n_tensors - 1) (fun _ -> (0, 1))
-      | Some path -> path
-    in
-    path
-    |> List.fold_left
-         (fun (tensors, steps) (ixl, ixr) ->
-           let contracted_tensors =
-             (List.nth tensors ixl, List.nth tensors ixr)
-           in
-           let new_tensors =
-             List.fold_right Util.delete_from_list [ ixl; ixr ] tensors
-           in
-           let single_contraction =
-             Binary_contraction.get_result contracted_tensors new_tensors
-               result_group
-           in
-           let new_tensors =
-             List.append new_tensors
-               [ single_contraction.batch @ single_contraction.zipped ]
-           in
-           let step =
-             Binary_contraction.get_result contracted_tensors new_tensors
-               result_group
-           in
-           (new_tensors, List.append steps [ (contracted_tensors, step) ]))
-         (bindings, [])
-    |> snd
 
-  let contraction
+    if n_tensors = 1 then
+      let tensor = List.hd bindings in
+      [
+        Unary_contraction
+          ( tensor,
+            Unary_contraction.make ~contracted:tensor ~result_type:result_group
+          );
+      ]
+    else
+      let path =
+        match path with
+        | Some [] | None -> List.init (n_tensors - 1) (fun _ -> (0, 1))
+        | Some path -> path
+      in
+      path
+      |> List.fold_left
+           (fun (tensors, steps) (ixl, ixr) ->
+             let cl, cr = List.(nth bindings ixl, nth bindings ixr) in
+             let new_tensors =
+               List.fold_right Util.delete_from_list [ ixl; ixr ] tensors
+             in
+             (* XXX two calls to Binary_contraction.make *)
+             let single_contraction =
+               Binary_contraction.make cl cr ~other_tensors:new_tensors
+                 ~result_type:result_group
+             in
+             let new_tensors =
+               List.append new_tensors
+                 [ single_contraction.batch @ single_contraction.zipped ]
+             in
+             let step =
+               Binary_contraction.make cl cr ~other_tensors:new_tensors
+                 ~result_type:result_group
+             in
+             ( new_tensors,
+               List.append steps [ Binary_contraction ((cl, cr), step) ] ))
+           (bindings, [])
+      |> snd
+
+  let pp_explain_binary_contraction ppf
       (((l_tensor, r_tensor), single_contraction) :
         (string list * string list) * Binary_contraction.t) =
-    let result_type = single_contraction.batch @ single_contraction.zipped in
-    let general_matmul = General_matmul.explain l_tensor r_tensor result_type in
-    ( Fmt.(str "%a" (list string ~sep:sp) single_contraction.contracted),
-      Fmt.(
-        str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp) l_tensor
-          (list string ~sep:sp) r_tensor (list string ~sep:sp) result_type),
-      Fmt.(str "%a" General_matmul.pp_expr general_matmul) )
+    let general_matmul =
+      General_matmul.make l_tensor r_tensor single_contraction.result_type
+    in
+    let l = Fmt.(list string ~sep:sp) in
+    Fmt.(
+      pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" l
+        single_contraction.contracted l l_tensor l r_tensor l
+        single_contraction.result_type General_matmul.pp_expr general_matmul)
 
-  let%expect_test "contraction" =
+  let pp_explain_unary_contraction ppf
+      (tensor, Unary_contraction.{ operations; contracted; preserved }) =
+    let l = Fmt.(list string ~sep:sp) in
+    Fmt.(
+      pf ppf "@[<2>contract@ %a (@[%a@] -> @[%a@])@ (%a)@]" l contracted l
+        tensor l preserved
+        (list ~sep:sp Unary_contraction.Op.pp)
+        operations)
+
+  let%expect_test "explain contractions" =
     let go rewrite path =
       get_contractions ~path rewrite
-      |> List.map (fun c ->
-             let contracted, contraction_type, operation = contraction c in
-             Fmt.str "@[<2>contract@ @[%s@] (%s)@ (%s)@]" contracted
-               contraction_type operation)
-      |> Fmt.(list ~sep:sp string) Fmt.stdout
+      |> List.iter (function
+           | Binary_contraction (tensors, c) ->
+               Fmt.pr "@[%a@]@." pp_explain_binary_contraction (tensors, c)
+           | Unary_contraction (tensor, unary_contraction) ->
+               Fmt.pr "@[%a@]@." pp_explain_unary_contraction
+                 (tensor, unary_contraction))
     in
     let rewrite =
       ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
@@ -770,24 +893,24 @@ end = struct
     [%expect
       {|
       contract k (a j k, a i k -> a i j) 
-        (torch.matmul(x.view(a, j, k), y.view(a, k, i)))
+        (torch.matmul(x, y.view(0, 2, 1)))
       contract a i j (a i j, a i j -> ) 
-        (torch.matmul(x.view(1, a * i * j), y.view(a * i * j, 1)).squeeze(1)
-        .squeeze(0))
+        ((x * y).sum())
       |}];
     go rewrite [ (0, 1); (0, 1) ];
     [%expect
       {|
       contract j (a i j, a j k -> a i k) 
-        (torch.matmul(x.view(a, i, j), y.view(a, j, k)))
+        (torch.matmul(x, y.view(0, 2, 1)))
       contract a i k (a i k, a i k -> ) 
-        (torch.matmul(x.view(1, a * i * k), y.view(a * i * k, 1)).squeeze(1)
-        .squeeze(0))
+        ((x * y).sum())
       |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
     go rewrite [ (0, 1) ];
-    [%expect
-      {| contract k (i k, k j -> i j) (torch.matmul(x.view(i, k), y.view(k, j))) |}]
+    [%expect {| contract k (i k, k j -> i j) (torch.matmul(x, y.view(1, 0))) |}];
+    let rewrite = ([ [ "i"; "i" ] ], []) in
+    go rewrite [];
+    [%expect {| contract i (i i -> ) (x.trace()) |}]
 
   let show_loops rewrite =
     let lhs_tensors, rhs_tensor = rewrite in
