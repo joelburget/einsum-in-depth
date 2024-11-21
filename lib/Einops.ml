@@ -278,7 +278,8 @@ module Binary_contraction : sig
           (** Tensordot operation with an explicit list of dimensions to contract *)
       | Matmul
       | Inner
-      | Diagonal of int * int * int  (** Diagonalize an input matrix *)
+      | Diagonal of { input_no : int; dim1 : int; dim2 : int }
+          (** Diagonalize an input matrix *)
       | Mul  (** Multiply two matrices *)
 
     val pp : t Fmt.t
@@ -316,7 +317,7 @@ end = struct
       | Tensordot2 of (int * int) list
       | Matmul
       | Inner
-      | Diagonal of int * int * int
+      | Diagonal of { input_no : int; dim1 : int; dim2 : int }
       | Mul
 
     let pp ppf = function
@@ -327,7 +328,8 @@ end = struct
             ixs
       | Matmul -> Fmt.string ppf "matmul"
       | Inner -> Fmt.string ppf "inner"
-      | Diagonal (a, b, c) -> Fmt.pf ppf "diagonal (%d, %d, %d)" a b c
+      | Diagonal { input_no; dim1; dim2 } ->
+          Fmt.pf ppf "diagonal (%d, %d, %d)" input_no dim1 dim2
       | Mul -> Fmt.string ppf "mul"
   end
 
@@ -385,14 +387,14 @@ end = struct
 
   let rec match_ops l r result =
     match first_repeat_indices l with
-    | Some (x, i, j) ->
-        let l = remove_indices l [ i; j ] @ [ x ] in
-        Op.Diagonal (0, i, j) :: match_ops l r result
+    | Some (x, dim1, dim2) ->
+        let l = remove_indices l [ dim1; dim2 ] @ [ x ] in
+        Op.Diagonal { input_no = 0; dim1; dim2 } :: match_ops l r result
     | None -> (
         match first_repeat_indices r with
-        | Some (x, i, j) ->
-            let r = remove_indices r [ i; j ] @ [ x ] in
-            Op.Diagonal (1, i, j) :: match_ops l r result
+        | Some (x, dim1, dim2) ->
+            let r = remove_indices r [ dim1; dim2 ] @ [ x ] in
+            Op.Diagonal { input_no = 1; dim1; dim2 } :: match_ops l r result
         | None -> (
             if l = r && r = result then [ Op.Mul ]
             else
