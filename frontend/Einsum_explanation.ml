@@ -95,7 +95,7 @@ let explain container contraction_str path_str =
     bracketed_parsed_input parse_path path_str
   in
 
-  let f path rewrite =
+  let render_steps path rewrite =
     let contractions = Einops.Explain.get_contractions ?path rewrite in
     let show_step_no =
       match contractions with
@@ -232,7 +232,7 @@ let explain container contraction_str path_str =
     |> S.l2
          (fun path rewrite ->
            match rewrite with
-           | Ok rewrite -> f path rewrite
+           | Ok rewrite -> render_steps path rewrite
            | Error msg -> [ txt' msg ])
          parsed_path_signal
   in
@@ -261,7 +261,7 @@ let explain container contraction_str path_str =
                      a "https://math.stackexchange.com/a/4858481/657087"
                        "Frobenius product";
                      txt'
-                       "generalizes the dot product from vectors to matrices. \
+                       " generalizes the dot product from vectors to matrices. \
                         A dot product takes two vectors of the same shape and \
                         returns a scalar. The Frobenius product takes two \
                         matrices of the same shape and returns a scalar. This \
