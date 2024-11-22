@@ -3,6 +3,33 @@ module String_map = Map.Make (String)
 module SS = String_set
 module SM = String_map
 
+module Counter : sig
+  type t = int SM.t
+
+  val make : string list -> t
+  val diff : t -> t -> t
+  val get : t -> string -> int
+end = struct
+  type t = int SM.t
+
+  let add_to_count map x =
+    SM.update x (function None -> Some 1 | Some n -> Some (n + 1)) map
+
+  let make = List.fold_left add_to_count SM.empty
+
+  let diff a b =
+    let key_set m = SM.to_seq m |> Seq.map fst |> SS.of_seq in
+    let keys = SS.(union (key_set a) (key_set b) |> to_list) in
+    List.fold_left
+      (fun acc key ->
+        let a_val = SM.find_opt key a |> Option.value ~default:0 in
+        let b_val = SM.find_opt key b |> Option.value ~default:0 in
+        if a_val = b_val then acc else SM.add key (a_val - b_val) acc)
+      SM.empty keys
+
+  let get m k = SM.find_opt k m |> Option.value ~default:0
+end
+
 (** A Group is the set of indices of a tensor. *)
 module Group = struct
   type t = string list
@@ -533,9 +560,6 @@ end
 module Find_diag_impl : sig
   val find_diag : string list -> string list -> (int * int) option
 end = struct
-  let add_to_count map x =
-    SM.update x (function None -> Some 1 | Some n -> Some (n + 1)) map
-
   type status = None_found | Found of string | Error of string
 
   let find_missing_label l r =
@@ -544,25 +568,21 @@ end = struct
     (* Fail if the right tensor has *any* labels the left doesn't. *)
     if SS.(cardinal (diff r_set l_set)) > 0 then None
     else
-      let count_l = List.fold_left add_to_count SM.empty l in
-      let count_r = List.fold_left add_to_count SM.empty r in
+      let count_l = Counter.make l in
+      let count_r = Counter.make r in
+      let diff = Counter.diff count_l count_r in
       let status =
         SM.fold
-          (fun k left_count acc ->
+          (fun k diff acc ->
             match acc with
             | Error _ -> acc
             | _ ->
-                let right_count =
-                  match SM.find_opt k count_r with None -> 0 | Some n -> n
-                in
-                let diff = left_count - right_count in
-                if diff = 0 then acc
-                else if diff = 1 then
+                if diff = 1 then
                   match acc with
                   | None_found -> Found k
                   | _ -> Error "found multiple missing labels"
                 else Error "found a diff that wasn't 0 or 1")
-          count_l None_found
+          diff None_found
       in
       match status with Found x -> Some x | _ -> None
 
