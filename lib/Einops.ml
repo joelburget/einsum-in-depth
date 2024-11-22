@@ -1,5 +1,7 @@
 module String_set = Set.Make (String)
+module String_map = Map.Make (String)
 module SS = String_set
+module SM = String_map
 
 (** A Group is the set of indices of a tensor. *)
 module Group = struct
@@ -528,13 +530,97 @@ end = struct
       |}]
 end
 
+module Find_diag_impl : sig
+  val find_diag : string list -> string list -> (int * int) option
+end = struct
+  let add_to_count map x =
+    SM.update x (function None -> Some 1 | Some n -> Some (n + 1)) map
+
+  type status = None_found | Found of string | Error of string
+
+  let find_missing_label l r =
+    let l_set = SS.of_list l in
+    let r_set = SS.of_list r in
+    (* Fail if the right tensor has *any* labels the left doesn't. *)
+    if SS.(cardinal (diff r_set l_set)) > 0 then None
+    else
+      let count_l = List.fold_left add_to_count SM.empty l in
+      let count_r = List.fold_left add_to_count SM.empty r in
+      let status =
+        SM.fold
+          (fun k left_count acc ->
+            match acc with
+            | Error _ -> acc
+            | _ ->
+                let right_count =
+                  match SM.find_opt k count_r with None -> 0 | Some n -> n
+                in
+                let diff = left_count - right_count in
+                if diff = 0 then acc
+                else if diff = 1 then
+                  match acc with
+                  | None_found -> Found k
+                  | _ -> Error "found multiple missing labels"
+                else Error "found a diff that wasn't 0 or 1")
+          count_l None_found
+      in
+      match status with Found x -> Some x | _ -> None
+
+  let%expect_test "find_missing_label" =
+    let go l r =
+      match find_missing_label l r with
+      | None -> Fmt.pr "None@."
+      | Some x -> Fmt.pr "%s@." x
+    in
+    go [ "a"; "b"; "c" ] [ "a"; "b" ];
+    [%expect {| c |}];
+    go [ "a"; "b" ] [ "a"; "b" ];
+    [%expect {| None |}];
+    go [ "a"; "c" ] [ "a"; "b" ];
+    [%expect {| None |}];
+    go [ "a"; "a" ] [ "a" ];
+    [%expect {| a |}];
+    go [ "a"; "a"; "a" ] [ "a" ];
+    [%expect {| None |}];
+    go [ "a"; "a"; "b" ] [ "a"; "b" ];
+    [%expect {| a |}]
+
+  let find_indices lst target =
+    let rec go i = function
+      | [] -> []
+      | x :: xs ->
+          let rest = go (i + 1) xs in
+          if x = target then i :: rest else rest
+    in
+    go 0 lst
+
+  let%expect_test "find_indices" =
+    let go lst target =
+      find_indices lst target |> Fmt.pr "@[[%a]@]@." Fmt.(list ~sep:semi int)
+    in
+    go [ 1; 2; 3; 2; 1 ] 2;
+    [%expect {| [1; 3] |}];
+    go [ 1; 2; 3; 2; 1 ] 1;
+    [%expect {| [0; 4] |}];
+    go [ 1; 2; 3; 2; 1 ] 4;
+    [%expect {| [] |}]
+
+  let find_diag l r =
+    match find_missing_label l r with
+    | None -> None
+    | Some label -> (
+        match find_indices l label with i :: j :: _ -> Some (i, j) | _ -> None)
+end
+
+open Find_diag_impl
+
 module Unary_contraction : sig
   module Op : sig
     type t =
       | Transpose
       | Trace
       | Sum
-      | Diag
+      | Diagonal of { dim1 : int; dim2 : int }
       | Swapaxes of (int * int) list
       | Id
 
@@ -555,7 +641,7 @@ end = struct
       | Transpose
       | Trace
       | Sum
-      | Diag
+      | Diagonal of { dim1 : int; dim2 : int }
       | Swapaxes of (int * int) list
       | Id
 
@@ -565,7 +651,8 @@ end = struct
       | Transpose -> Fmt.string ppf "x.transpose()"
       | Trace -> Fmt.string ppf "x.trace()"
       | Sum -> Fmt.string ppf "x.sum()"
-      | Diag -> Fmt.string ppf "x.diag()"
+      | Diagonal { dim1; dim2 } ->
+          Fmt.pf ppf "x.diagonal(dim1=%d, dim2=%d)" dim1 dim2
       | Swapaxes axes -> Fmt.(pf ppf "x%a" (list ~sep:cut pp_swap_axis) axes)
       | Id -> Fmt.string ppf "x"
   end
@@ -583,22 +670,24 @@ end = struct
       operations l contracted l preserved
 
   let match_op contracted_tensor result =
-    match (contracted_tensor, result) with
-    | x, x' when x = x' -> Some Op.Id
-    | [ x; y ], [ y'; x' ] when x = x' && y = y' -> Some Transpose
-    | [ x; x' ], [] when x = x' -> Some Trace
-    | [ x; x' ], [ x'' ] when x = x' && x = x'' -> Some Diag
-    | xs, [] -> if has_repeat_indices xs then None else Some Sum
-    | x, x' when x <> x' && SS.(equal (of_list x) (of_list x')) ->
-        (* Find minimal set of swaps *)
-        let axes = minimum_swaps x x' in
-        Some (Swapaxes axes)
-    | _ -> None
+    match find_diag contracted_tensor result with
+    | Some (dim1, dim2) -> Some (Op.Diagonal { dim1; dim2 })
+    | None -> (
+        match (contracted_tensor, result) with
+        | x, x' when x = x' -> Some Id
+        | [ x; y ], [ y'; x' ] when x = x' && y = y' -> Some Transpose
+        | [ x; x' ], [] when x = x' -> Some Trace
+        | xs, [] -> if has_repeat_indices xs then None else Some Sum
+        | x, x' when x <> x' && SS.(equal (of_list x) (of_list x')) ->
+            (* Find minimal set of swaps *)
+            let axes = minimum_swaps x x' in
+            Some (Swapaxes axes)
+        | _ -> None)
 
   let make ~contracted ~result_type =
     let open SS in
     let contracted_labels, result_labels =
-      (SS.of_list contracted, SS.of_list result_type)
+      SS.(of_list contracted, of_list result_type)
     in
     let operations =
       match match_op contracted result_type with
@@ -620,8 +709,11 @@ end = struct
     go [ "i"; "i" ] [];
     [%expect {| operations: [x.trace()], contracted: [i], preserved: [] |}];
     go [ "i"; "i" ] [ "i" ];
-    (* XXX should i be included in contracted here? *)
-    [%expect {| operations: [x.diag()], contracted: [], preserved: [i] |}];
+    [%expect
+      {| 
+      operations: [x.diagonal(dim1=0, dim2=1)], contracted: [i], preserved: 
+      [i] 
+      |}];
     go [ "i" ] [];
     [%expect {| operations: [x.sum()], contracted: [i], preserved: [] |}];
     go [ "i"; "j" ] [ "j"; "i" ];
@@ -649,7 +741,7 @@ end = struct
     go [ "i"; "j" ] [];
     [%expect {| x.sum() |}];
     go [ "i"; "i" ] [ "i" ];
-    [%expect {| x.diag() |}];
+    [%expect {| x.diagonal(dim1=0, dim2=1) |}];
     go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
     [%expect {| x.swapaxes(0, 2) |}]
 end
