@@ -874,8 +874,8 @@ module General_matmul : sig
     view_l : string list list;
         (** Instructions for packing the left tensor. Batch dimensions followed by matrix dimensions. *)
     view_r : string list list;  (** See [view_l] *)
-    matmul : string list * string list * string list;
-        (** Output of matmul, before unpacking. Batch dimensions, followed by matrix dimensions. *)
+    packed_matmul : string list * string list * string list;
+        (** Output of matmul before unpacking. Batch dimensions, followed by both matrix dimensions. *)
     unpack_squeeze : int list;  (** List of dimensions to squeeze. *)
   }
 
@@ -888,7 +888,7 @@ end = struct
     pack : packed * packed;
     view_l : string list list;
     view_r : string list list;
-    matmul : string list * string list * string list;
+    packed_matmul : string list * string list * string list;
     unpack_squeeze : int list;
   }
 
@@ -910,24 +910,48 @@ end = struct
     Fmt.pr "@[%a@]@." (Fmt.list squeeze) [ 1; 2; 3 ];
     [%expect {| .squeeze(1).squeeze(2).squeeze(3) |}]
 
+  let rec replicate n x = if n = 0 then [] else x :: replicate (n - 1) x
+
   let make input_l input_r output =
     let input_l_s, input_r_s, output_s =
       SS.(of_list input_l, of_list input_r, of_list output)
     in
-
+    let l_counter, r_counter, output_counter =
+      Counter.(make input_l, make input_r, make output)
+    in
     let common_inputs = SS.inter input_l_s input_r_s in
+
+    (* Axes which appear only on the left so will appear in the left matrix *)
+    let left_only_input =
+      SS.diff input_l_s common_inputs
+      |> SS.elements
+      |> List.map (fun k -> replicate (SM.find k l_counter) k)
+      |> List.flatten
+    in
+
+    (* Axes which appear only on the right so will appear in the right matrix *)
+    let right_only_input =
+      SS.diff input_r_s common_inputs
+      |> SS.elements
+      |> List.map (fun k -> replicate (SM.find k r_counter) k)
+      |> List.flatten
+    in
 
     (* Contract (matmul) axes which appear on both inputs but not the output *)
     let contracted = SS.diff common_inputs output_s |> SS.elements in
 
-    (* Zip (batch) axes which are common to both inputs and the output *)
-    let batch_dims = SS.inter common_inputs output_s |> SS.elements in
-
-    (* Axes which appear only on the left so will appear in the left matrix *)
-    let left_only_input = SS.diff input_l_s common_inputs |> SS.elements in
-
-    (* Axes which appear only on the right so will appear in the right matrix *)
-    let right_only_input = SS.diff input_r_s common_inputs |> SS.elements in
+    (* Dimensions which appear once in each input and the output *)
+    let get_ones m =
+      SM.fold (fun k v acc -> if v = 1 then SS.add k acc else acc) m SS.empty
+    in
+    let appear_once_l = get_ones l_counter in
+    let appear_once_r = get_ones r_counter in
+    let appear_once_output = get_ones output_counter in
+    let batch_dims =
+      SS.(
+        inter (inter appear_once_l appear_once_r) appear_once_output |> to_list)
+    in
+    Fmt.pr "Batch dims: [%a]@." Fmt.(list string) batch_dims;
 
     let pack =
       ( { batch_dims; matrix = (left_only_input, contracted) },
@@ -935,14 +959,24 @@ end = struct
     in
 
     (* Preserve batch dimensions, preserve unique axes on both sides *)
-    let matmul = (batch_dims, left_only_input, right_only_input) in
+    let packed_matmul = (batch_dims, left_only_input, right_only_input) in
 
+    Fmt.(
+      pr "@[left_only_input: [%a], right_only_input: [%a], contracted: [%a]@]@."
+        (list string) left_only_input (list string) right_only_input
+        (list string) contracted);
     let view_l =
       List.map (fun x -> [ x ]) batch_dims @ [ left_only_input; contracted ]
     in
     let view_r =
       List.map (fun x -> [ x ]) batch_dims @ [ contracted; right_only_input ]
     in
+    Fmt.pr "@[view_l: [%a]@]@."
+      Fmt.(list ~sep:sp (brackets (list ~sep:comma string)))
+      view_l;
+    Fmt.pr "@[view_r: [%a]@]@."
+      Fmt.(list ~sep:sp (brackets (list ~sep:comma string)))
+      view_r;
 
     let n_batch_dims = List.length batch_dims in
     let unpack_squeeze =
@@ -953,87 +987,87 @@ end = struct
       | _, _ -> []
     in
 
-    { pack; view_l; view_r; matmul; unpack_squeeze }
+    { pack; view_l; view_r; packed_matmul; unpack_squeeze }
 
-  (* XXX
-     let%expect_test "General_matmul" =
-       let fmt_axis ppf strs =
-         match strs with
-         | [] -> Fmt.pf ppf "1"
-         | [ a ] -> Fmt.string ppf a
-         | _ -> Fmt.(parens (list ~sep:sp string)) ppf strs
-       in
-       let fmt_pack ppf { batch_dims; matrix = l, r } =
-         match batch_dims with
-         | [] -> Fmt.(pf ppf "%a %a" fmt_axis l fmt_axis r)
-         | _ ->
-             Fmt.(
-               pf ppf "%a %a %a" (list ~sep:sp string) batch_dims fmt_axis l
-                 fmt_axis r)
-       in
-       let fmt_matmul ppf (batch_dims, y, z) =
-         match batch_dims with
-         | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z)
-         | _ ->
-             Fmt.(
-               pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y
-                 fmt_axis z)
-       in
-       let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
-       let go input_l input_r output =
-         let { pack; view_l; view_r; matmul; unpack_squeeze } =
-           make input_l input_r output
-         in
-         Fmt.pr "Pack:@.";
-         Fmt.(
-           pr "  @[View %a: %a -> %a@]@." shape view_l (list ~sep:sp string)
-             input_l fmt_pack (fst pack));
-         Fmt.(
-           pr "  @[View %a: %a -> %a@]@." shape view_r (list ~sep:sp string)
-             input_r fmt_pack (snd pack));
-         Fmt.pr "Unpack:@.";
-         Fmt.(
-           pr "  @[%a: %a -> %a@]@."
-             (brackets (list ~sep:semi squeeze))
-             unpack_squeeze fmt_matmul matmul (list ~sep:sp string) output)
-       in
-          go [ "a"; "b" ] [ "b"; "a" ] [ "a"; "a" ];
-          [%expect
-            {|
-              Pack:
-                View (a, b): a b -> a b
-                View (b, a): b a -> b a
-              Unpack:
-                []: a a -> a a
-            |}];
-          go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
-          [%expect
-            {|
+  let%expect_test "General_matmul" =
+    let fmt_axis ppf strs =
+      match strs with
+      | [] -> Fmt.pf ppf "1"
+      | [ a ] -> Fmt.string ppf a
+      | _ -> Fmt.(parens (list ~sep:sp string)) ppf strs
+    in
+    let fmt_pack ppf { batch_dims; matrix = l, r } =
+      match batch_dims with
+      | [] -> Fmt.(pf ppf "%a %a" fmt_axis l fmt_axis r)
+      | _ ->
+          Fmt.(
+            pf ppf "%a %a %a" (list ~sep:sp string) batch_dims fmt_axis l
+              fmt_axis r)
+    in
+    let fmt_matmul ppf (batch_dims, y, z) =
+      match batch_dims with
+      | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z)
+      | _ ->
+          Fmt.(
+            pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y
+              fmt_axis z)
+    in
+    let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
+    let go input_l input_r output =
+      let { pack; view_l; view_r; packed_matmul; unpack_squeeze } =
+        make input_l input_r output
+      in
+      Fmt.pr "Pack:@.";
+      Fmt.(
+        pr "  @[View %a: %a -> %a@]@." shape view_l (list ~sep:sp string)
+          input_l fmt_pack (fst pack));
+      Fmt.(
+        pr "  @[View %a: %a -> %a@]@." shape view_r (list ~sep:sp string)
+          input_r fmt_pack (snd pack));
+      Fmt.pr "Unpack:@.";
+      Fmt.(
+        pr "  @[%a: %a -> %a@]@."
+          (brackets (list ~sep:semi squeeze))
+          unpack_squeeze fmt_matmul packed_matmul (list ~sep:sp string) output)
+    in
+    go [ "a"; "b" ] [ "b"; "a" ] [ "a"; "a" ];
+    [%expect
+      {|
+      Pack:
+        View (a, b): a b -> a b
+        View (b, a): b a -> b a
+      Unpack:
+        []: a a -> a a
+      |}]
+  (*
+    go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
+    [%expect
+      {|
               Pack:
                 View (a, 1, b): a b -> a 1 b
                 View (a, b, 1): b a -> a b 1
               Unpack:
                 [Squeeze 2; Squeeze 1]: a 1 1 -> a
             |}];
-          go [ "a"; "b"; "c" ] [ "a"; "b"; "d" ] [ "a"; "c"; "d" ];
-          [%expect
-            {|
+    go [ "a"; "b"; "c" ] [ "a"; "b"; "d" ] [ "a"; "c"; "d" ];
+    [%expect
+      {|
              Pack:
                View (a, c, b): a b c -> a c b
                View (a, b, d): a b d -> a b d
              Unpack:
                []: a c d -> a c d
           |}];
-          go [ "a"; "b" ] [ "b"; "a" ] [];
-          [%expect
-            {|
+    go [ "a"; "b" ] [ "b"; "a" ] [];
+    [%expect
+      {|
              Pack:
                View (1, a * b): a b -> 1 (a b)
                View (a * b, 1): b a -> (a b) 1
              Unpack:
                [Squeeze 1; Squeeze 0]: 1 1 ->
           |}]
-  *)
+    *)
 end
 
 module Explain : sig
