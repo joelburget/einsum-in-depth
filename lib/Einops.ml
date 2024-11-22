@@ -9,6 +9,7 @@ module Counter : sig
   val make : string list -> t
   val diff : t -> t -> t
   val get : t -> string -> int
+  val key_set : t -> SS.t
 end = struct
   type t = int SM.t
 
@@ -16,9 +17,9 @@ end = struct
     SM.update x (function None -> Some 1 | Some n -> Some (n + 1)) map
 
   let make = List.fold_left add_to_count SM.empty
+  let key_set m = SM.to_seq m |> Seq.map fst |> SS.of_seq
 
   let diff a b =
-    let key_set m = SM.to_seq m |> Seq.map fst |> SS.of_seq in
     let keys = SS.(union (key_set a) (key_set b) |> to_list) in
     List.fold_left
       (fun acc key ->
@@ -705,20 +706,18 @@ end = struct
         | _ -> None)
 
   let make ~contracted ~result_type =
-    let open SS in
-    let contracted_labels, result_labels =
-      SS.(of_list contracted, of_list result_type)
-    in
     let operations =
       match match_op contracted result_type with
       | Some op -> [ op ]
       | None -> [ (* TODO *) ]
     in
-    {
-      operations;
-      contracted = elements (diff contracted_labels result_labels);
-      preserved = elements (inter contracted_labels result_labels);
-    }
+    let diffs = Counter.(diff (make contracted) (make result_type)) in
+    let contracted_labels = Counter.key_set diffs in
+    let preserved =
+      SS.(diff (of_list contracted) contracted_labels |> to_list)
+    in
+    let contracted = SS.elements contracted_labels in
+    { operations; contracted; preserved }
 
   let%expect_test "make" =
     let go contracted result_type =
@@ -732,7 +731,7 @@ end = struct
     [%expect
       {| 
       operations: [x.diagonal(dim1=0, dim2=1)], contracted: [i], preserved: 
-      [i] 
+      [] 
       |}];
     go [ "i" ] [];
     [%expect {| operations: [x.sum()], contracted: [i], preserved: [] |}];
