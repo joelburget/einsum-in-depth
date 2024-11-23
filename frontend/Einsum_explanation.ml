@@ -220,9 +220,22 @@ let explain container contraction_str path_str =
       ]
   in
 
+  let clicked_op_in_text, send_clicked_op_in_text = E.create () in
+  let selected_changes =
+    selected_signal |> S.changes |> E.map trim_before_colon
+  in
+
+  let op_button text op_str =
+    let elem = Brr.El.button ~at:(classes "underline") [ txt' text ] in
+    let evt = Note_brr.Evr.on_el Ev.click (fun _ -> ()) elem in
+    (* XXX does this have the correct semantics? Event leak etc? *)
+    Logr.may_hold E.(log evt (fun () -> send_clicked_op_in_text op_str));
+    elem
+  in
+
   let logger, c_input, current_input =
     input' ~at:input_classes contraction_str
-      (selected_signal |> S.changes |> E.map trim_before_colon)
+      (E.select [ clicked_op_in_text; selected_changes ])
   in
   Logr.may_hold logger;
 
@@ -252,8 +265,12 @@ let explain container contraction_str path_str =
             [
               txt'
                 "Einsum notation is a compact and intuitive way to write many \
-                 linear algebra operations: matrix multiplication, dot / \
-                 Frobenius product";
+                 linear algebra operations: ";
+              op_button "matrix multiplication" "a b, b c -> a c";
+              txt' ", ";
+              op_button "dot" "a, a ->";
+              txt' " / ";
+              op_button "Frobenius product" "a b, a b ->";
               info
                 (span
                    [
@@ -269,9 +286,13 @@ let explain container contraction_str path_str =
                         the same shape (of arbitrary dimension), pointwise \
                         multiplying them, and summing over each element.";
                    ]);
-              txt'
-                ", transpose, trace, as well as many more complex operations \
-                 which don't have a name.";
+              txt' ", ";
+              op_button "transpose" "a b -> b a";
+              txt' ", ";
+              op_button "trace" "a a ->";
+              txt' ", as well as many more ";
+              op_button "complex operations" "a a b c, a d, d e f -> b c e f";
+              txt' " which don't have a name.";
             ];
           p
             [

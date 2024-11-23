@@ -416,4 +416,6 @@ end
 
 let select items = Select_and_info.select items
 let info child = Select_and_info.info child
-let a link text = El.a ~at:[ At.href (Jstr.v link) ] [ txt' text ]
+
+let a link text =
+  El.a ~at:[ At.href (Jstr.v link); class_ "underline" ] [ txt' text ]
