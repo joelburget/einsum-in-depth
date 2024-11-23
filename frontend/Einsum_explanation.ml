@@ -89,13 +89,64 @@ let list_variables = function
        @ [ txt' " and "; code [ txt' last ] ]
         : El.t list)
 
+let radio : 'a. ?at:At.t list -> 'a -> ('a -> unit) -> El.t =
+ fun ?(at = []) (value : 'a) f ->
+  let input_elem = input ~at:(At.type' (Jstr.v "radio") :: at) () in
+  Evr.endless_listen (as_target input_elem) Ev.change (fun _ -> f value);
+  input_elem
+
 let explain container contraction_str path_str =
   let result_output = div [] in
   let parsed_path_signal, path_input, path_err_elem =
     bracketed_parsed_input parse_path path_str
   in
 
-  let render_steps path rewrite =
+  let code_preference_signal, code_preference_selector =
+    let preference_signal, set_preference = S.create Einops.Numpy in
+    let base_classes =
+      "flex items-center justify-center rounded-md bg-white px-3 py-3 text-sm \
+       font-semibold uppercase text-gray-900 ring-1 ring-gray-300 \
+       hover:bg-gray-50 data-[checked]:bg-indigo-600 data-[checked]:text-white \
+       data-[checked]:ring-0 data-[focus]:data-[checked]:ring-2 \
+       data-[focus]:ring-2 data-[focus]:ring-indigo-600 \
+       data-[focus]:ring-offset-2 data-[checked]:hover:bg-indigo-500 sm:flex-1 \
+       [&:not([data-focus],[data-checked])]:ring-inset cursor-pointer \
+       focus:outline-none"
+    in
+    let numpy_radio =
+      radio
+        ~at:
+          At.(
+            name (Jstr.v "code-preference")
+            :: id (Jstr.v "numpy-preference")
+            :: classes base_classes)
+        Einops.Numpy set_preference
+    in
+    let torch_radio =
+      radio
+        ~at:
+          At.(
+            name (Jstr.v "code-preference")
+            :: id (Jstr.v "pytorch-preference")
+            :: classes base_classes)
+        Einops.Pytorch set_preference
+    in
+    let selector =
+      Brr.El.(
+        fieldset
+          [
+            numpy_radio;
+            label ~at:At.[ for' (Jstr.v "numpy-preference") ] [ txt' "Numpy" ];
+            torch_radio;
+            label
+              ~at:At.[ for' (Jstr.v "pytorch-preference") ]
+              [ txt' "Pytorch" ];
+          ])
+    in
+    (preference_signal, selector)
+  in
+
+  let render_steps path rewrite code_preference =
     let contractions = Einops.Explain.get_contractions ?path rewrite in
     let show_step_no =
       match contractions with
@@ -137,7 +188,10 @@ let explain container contraction_str path_str =
                 code
                   [
                     txt'
-                      Fmt.(str "%a" Einops.Unary_contraction.pp_ops operations);
+                      Fmt.(
+                        str "%a"
+                          (Einops.Unary_contraction.pp_ops code_preference)
+                          operations);
                   ];
                 span [ txt' ")" ];
                 Tensor_diagram.draw_unary_contraction contraction;
@@ -216,6 +270,7 @@ let explain container contraction_str path_str =
             " array and then iterate over every position in every axis, \
              building up the result.";
         ];
+      code_preference_selector;
       code
         ~at:(classes "before:content-[''] after:content-['']")
         [ El.pre [ txt' python_code ] ];
@@ -272,15 +327,18 @@ let explain container contraction_str path_str =
   in
   Logr.may_hold logger;
 
+  let parsed_input_signal =
+    S.map
+      (fun str -> str |> trim_before_colon |> Einsum_parser.parse)
+      current_input
+  in
   let explanation_signal =
-    current_input
-    |> S.map (fun str -> str |> trim_before_colon |> Einsum_parser.parse)
-    |> S.l2
-         (fun path rewrite ->
-           match rewrite with
-           | Ok rewrite -> render_steps path rewrite
-           | Error msg -> [ txt' msg ])
-         parsed_path_signal
+    S.l3
+      (fun path rewrite code_preference ->
+        match rewrite with
+        | Ok rewrite -> render_steps path rewrite code_preference
+        | Error msg -> [ txt' msg ])
+      parsed_path_signal parsed_input_signal code_preference_signal
   in
 
   Elr.def_children result_output explanation_signal;

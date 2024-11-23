@@ -3,6 +3,8 @@ module String_map = Map.Make (String)
 module SS = String_set
 module SM = String_map
 
+type code_backend = Numpy | Pytorch
+
 module Counter : sig
   type t = int SM.t
 
@@ -310,9 +312,9 @@ module Binary_contraction : sig
       | Inner
       | Diagonal of { input_no : int; dim1 : int; dim2 : int }
           (** Diagonalize an input matrix *)
-      | Mul  (** Multiply two matrices *)
+      | Mul  (** Multiply two matrices (pointwise) *)
 
-    val pp : t Fmt.t
+    val pp : code_backend -> 'a Fmt.t -> 'a -> 'b Fmt.t -> 'b -> t Fmt.t
   end
 
   type t = {
@@ -350,17 +352,40 @@ end = struct
       | Diagonal of { input_no : int; dim1 : int; dim2 : int }
       | Mul
 
-    let pp ppf = function
-      | Tensordot1 ix -> Fmt.pf ppf "tensordot %d" ix
+    let pp backend pp_arg1 arg1 pp_arg2 arg2 ppf op =
+      let backend_name =
+        match backend with Numpy -> "np" | Pytorch -> "torch"
+      in
+      match op with
+      | Tensordot1 ix ->
+          Fmt.pf ppf "%s.tensordot(@[%a,@ %a,@ %d@])" backend_name pp_arg1 arg1
+            pp_arg2 arg2 ix
       | Tensordot2 ixs ->
-          Fmt.pf ppf "tensordot @[<hov 1>[%a]@]"
+          Fmt.pf ppf "%s.tensordot(@[<hov 1>%a,@ %a,@ [%a]@])" backend_name
+            pp_arg1 arg1 pp_arg2 arg2
             Fmt.(list ~sep:comma (parens (pair int int ~sep:comma)))
             ixs
-      | Matmul -> Fmt.string ppf "matmul"
-      | Inner -> Fmt.string ppf "inner"
-      | Diagonal { input_no; dim1; dim2 } ->
-          Fmt.pf ppf "diagonal (%d, %d, %d)" input_no dim1 dim2
-      | Mul -> Fmt.string ppf "mul"
+      | Matmul ->
+          Fmt.pf ppf "%s.matmul(@[%a,@ %a@])" backend_name pp_arg1 arg1 pp_arg2
+            arg2
+      | Inner ->
+          Fmt.pf ppf "%s.inner([@[%a,@ %a@]])" backend_name pp_arg1 arg1 pp_arg2
+            arg2
+      | Diagonal { input_no; dim1; dim2 } -> (
+          match (backend, input_no) with
+          | Numpy, 0 ->
+              Fmt.pf ppf "%a.diagonal(@[axis1=%d,@ axis2=%d@])" pp_arg1 arg1
+                dim1 dim2
+          | Numpy, _ ->
+              Fmt.pf ppf "%a.diagonal(@[axis1=%d,@ axis2=%d@])" pp_arg2 arg2
+                dim1 dim2
+          | Pytorch, 0 ->
+              Fmt.pf ppf "%a.diagonal(@[dim1=%d,@ dim2=%d@])" pp_arg1 arg1 dim1
+                dim2
+          | Pytorch, _ ->
+              Fmt.pf ppf "%a.diagonal(@[dim1=%d,@ dim2=%d@])" pp_arg2 arg2 dim1
+                dim2)
+      | Mul -> Fmt.pf ppf "(@[%a * %a@])" pp_arg1 arg1 pp_arg2 arg2
   end
 
   type t = {
@@ -373,13 +398,15 @@ end = struct
     result_type : string list;
   }
 
+  let debug_op_pp = Op.pp Numpy Fmt.string "x" Fmt.string "y"
+
   let pp ppf { l; r; operations; contracted; zipped; batch; result_type } =
     let lst = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf
       "@[l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], contracted: @[[%a]@], \
        zipped: @[[%a]@], batch: @[[%a]@], result_type: @[[%a]@]@]"
       lst l lst r
-      Fmt.(list ~sep:comma Op.pp)
+      Fmt.(list ~sep:comma debug_op_pp)
       operations lst contracted lst zipped lst batch lst result_type
 
   (* Try matching two inputs and an output to a tensordot operation *)
@@ -403,7 +430,9 @@ end = struct
     else None
 
   let%expect_test "match_tensordot" =
-    let go x y z = Fmt.pr "%a@." (Fmt.option Op.pp) (match_tensordot x y z) in
+    let go x y z =
+      Fmt.pr "%a@." (Fmt.option debug_op_pp) (match_tensordot x y z)
+    in
     go [ "a"; "b"; "c" ] [ "d"; "e" ] [ "a"; "b"; "c"; "d"; "e" ];
     [%expect {| tensordot 0 |}];
     go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
@@ -474,7 +503,7 @@ end = struct
   let%expect_test "operations" =
     let go l r result_type =
       let { operations; _ } = make l r ~other_tensors:[] ~result_type in
-      Fmt.pr "%a\n" Fmt.(list ~sep:comma Op.pp) operations
+      Fmt.pr "%a\n" Fmt.(list ~sep:comma debug_op_pp) operations
     in
     go [ "i" ] [ "i" ] [];
     [%expect {| inner |}];
@@ -645,7 +674,7 @@ module Unary_contraction : sig
       | Swapaxes of (int * int) list
       | Id
 
-    val pp : t Fmt.t
+    val pp : code_backend -> t Fmt.t
   end
 
   type t = {
@@ -656,7 +685,7 @@ module Unary_contraction : sig
 
   val make : contracted:string list -> result_type:string list -> t
   val pp : t Fmt.t
-  val pp_ops : Op.t list Fmt.t
+  val pp_ops : code_backend -> Op.t list Fmt.t
 end = struct
   module Op = struct
     type t =
@@ -669,12 +698,15 @@ end = struct
 
     let pp_swap_axis ppf (a, b) = Fmt.pf ppf ".swapaxes(%d, %d)" a b
 
-    let pp ppf = function
-      | Transpose -> Fmt.string ppf ".transpose()"
+    let pp backend ppf = function
+      | Transpose ->
+          if backend = Numpy then Fmt.string ppf ".T" else Fmt.string ppf ".t()"
       | Trace -> Fmt.string ppf ".trace()"
       | Sum -> Fmt.string ppf ".sum()"
       | Diagonal { dim1; dim2 } ->
-          Fmt.pf ppf ".diagonal(dim1=%d, dim2=%d)" dim1 dim2
+          if backend = Numpy then
+            Fmt.pf ppf ".diagonal(axis1=%d, axis2=%d)" dim1 dim2
+          else Fmt.pf ppf ".diagonal(dim1=%d, dim2=%d)" dim1 dim2
       | Swapaxes axes -> Fmt.(pf ppf "%a" (list ~sep:cut pp_swap_axis) axes)
       | Id -> Fmt.string ppf ""
   end
@@ -685,13 +717,16 @@ end = struct
     preserved : string list;
   }
 
+  let op_pp_numpy = Op.pp Numpy
+
   let pp ppf { operations; contracted; preserved } =
     let l = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf "operations: @[[%a]@], contracted: @[[%a]@], preserved: @[[%a]@]"
-      Fmt.(list ~sep:comma Op.pp)
+      Fmt.(list ~sep:comma op_pp_numpy)
       operations l contracted l preserved
 
-  let pp_ops ppf ops = Fmt.(pf ppf "x%a" (list ~sep:cut Op.pp) ops)
+  let pp_ops backend ppf ops =
+    Fmt.(pf ppf "x%a" (list ~sep:cut (Op.pp backend)) ops)
 
   let match_op contracted_tensor result =
     match find_diag contracted_tensor result with
@@ -748,7 +783,7 @@ end = struct
   let%expect_test "operations" =
     let go contracted result_type =
       let { operations; _ } = make ~contracted ~result_type in
-      Fmt.pr "%a\n" Fmt.(list ~sep:comma Op.pp) operations
+      Fmt.pr "%a\n" Fmt.(list ~sep:comma op_pp_numpy) operations
     in
     go [ "i" ] [ "i" ];
     [%expect {| |}];
