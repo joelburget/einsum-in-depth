@@ -102,6 +102,26 @@ let explain container contraction_str path_str =
       | Unary_contraction _ -> false
       | Binary_contractions contractions -> List.length contractions > 1
     in
+    let tensor_diagram_info =
+      info
+        (div
+           [
+             h2 [ txt' "Interpreting a Tensor Diagram" ];
+             p
+               [
+                 txt'
+                   "Each node in a tensor diagram represents a tensor (e.g a \
+                    matrix or vector). Each line emanating from a tensor \
+                    represents one of that tensor's dimensions. When two \
+                    tensors are connected by a single line that represents a \
+                    contraction (summation over the connected indices). See ";
+                 a "https://tensornetwork.org/diagrams/" "tensornetwork.org";
+                 txt' " or ";
+                 a "https://www.tensors.net/intro" "tensors.net";
+                 txt' " for more.";
+               ];
+           ])
+    in
     let steps =
       match contractions with
       | Einops.Explain.Unary_contraction (_tensor, contraction) ->
@@ -121,6 +141,7 @@ let explain container contraction_str path_str =
                   ];
                 span [ txt' ")" ];
                 Tensor_diagram.draw_unary_contraction contraction;
+                tensor_diagram_info;
               ];
           ]
       | Binary_contractions contractions ->
@@ -169,12 +190,7 @@ let explain container contraction_str path_str =
                   span [ txt' ")." ];
                   Tensor_diagram.draw_binary_contraction l_tensor r_tensor
                     contraction;
-                  info
-                    (div
-                       [
-                         h2 [ txt' "Interpreting a Tensor Diagram" ];
-                         p [ txt' "" ];
-                       ]);
+                  tensor_diagram_info;
                 ])
             contractions
     in
