@@ -104,8 +104,25 @@ let explain container contraction_str path_str =
     in
     let steps =
       match contractions with
-      | Einops.Explain.Unary_contraction _ ->
-          [ div [ txt' "Unary contraction (TODO)" ] ]
+      | Einops.Explain.Unary_contraction (_tensor, contraction) ->
+          let Einops.Unary_contraction.{ operations; contracted; _ } =
+            contraction
+          in
+          [
+            div
+              [
+                span [ txt' "Contract " ];
+                code [ txt' Fmt.(str "%a" (list string ~sep:sp) contracted) ];
+                span [ txt' "(in Pytorch this would be " ];
+                code
+                  [
+                    txt'
+                      Fmt.(str "%a" Einops.Unary_contraction.pp_ops operations);
+                  ];
+                span [ txt' ")" ];
+                Tensor_diagram.draw_unary_contraction contraction;
+              ];
+          ]
       | Binary_contractions contractions ->
           List.mapi
             (fun i contraction ->
@@ -150,7 +167,7 @@ let explain container contraction_str path_str =
                           str "%a" Einops.General_matmul.pp_expr general_matmul);
                     ];
                   span [ txt' ")." ];
-                  Tensor_diagram.draw_contraction (l_tensor, r_tensor)
+                  Tensor_diagram.draw_binary_contraction l_tensor r_tensor
                     contraction;
                   info
                     (div

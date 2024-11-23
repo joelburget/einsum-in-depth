@@ -1,10 +1,63 @@
 open Tensor_playground.Einops
+open Cytoscape
 
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
 
-let draw_contraction (l_tensor, r_tensor)
+let draw_unary_contraction Unary_contraction.{ contracted; preserved; _ } =
+  let dangling_nodes =
+    preserved
+    |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+    |> Array.of_list
+  in
+  let nodes =
+    Array.append
+      [| Node.{ id = "tensor"; label = ""; node_type = Tensor } |]
+      dangling_nodes
+  in
+
+  let edges1 =
+    contracted
+    |> List.map (fun name ->
+           Edge.
+             {
+               id = Fmt.str "contracted-%s" name;
+               label = name;
+               source = "tensor";
+               target = "tensor";
+             })
+    |> Array.of_list
+  in
+
+  let edges2 =
+    preserved
+    |> List.map (fun name ->
+           Edge.
+             {
+               id = Fmt.str "contracted-%s" name;
+               label = "";
+               source = "tensor";
+               target = Fmt.str "preserved-%s" name;
+             })
+    |> Array.of_list
+  in
+
+  let edges = Array.append edges1 edges2 in
+
+  let elements = Elements.{ nodes; edges } in
+  let el =
+    Brr.El.div ~at:Brr.At.[ style (Jstr.v "background-color: white;") ] []
+  in
+  let opts =
+    Cytoscape.opts ~container:el ~elements
+      ~fixed:[| ("tensor", 300, 300) |]
+      ~zipped:[] ()
+  in
+  let _ : Cytoscape.t = Cytoscape.create ~opts () in
+
+  el
+
+let draw_binary_contraction l_tensor r_tensor
     Binary_contraction.{ contracted; zipped; _ } =
-  let open Cytoscape in
   let left_uncontracted : string list =
     list_subtraction l_tensor (contracted @ zipped)
   in
@@ -119,7 +172,6 @@ let draw_contraction (l_tensor, r_tensor)
       ~fixed:[| ("left", 200, 300); ("right", 400, 300) |]
       ~zipped ()
   in
-  Brr.Console.log [ opts ];
   let _ : Cytoscape.t = Cytoscape.create ~opts () in
 
   el
