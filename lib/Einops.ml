@@ -656,6 +656,7 @@ module Unary_contraction : sig
 
   val make : contracted:string list -> result_type:string list -> t
   val pp : t Fmt.t
+  val pp_ops : Op.t list Fmt.t
 end = struct
   module Op = struct
     type t =
@@ -669,13 +670,13 @@ end = struct
     let pp_swap_axis ppf (a, b) = Fmt.pf ppf ".swapaxes(%d, %d)" a b
 
     let pp ppf = function
-      | Transpose -> Fmt.string ppf "x.transpose()"
-      | Trace -> Fmt.string ppf "x.trace()"
-      | Sum -> Fmt.string ppf "x.sum()"
+      | Transpose -> Fmt.string ppf ".transpose()"
+      | Trace -> Fmt.string ppf ".trace()"
+      | Sum -> Fmt.string ppf ".sum()"
       | Diagonal { dim1; dim2 } ->
-          Fmt.pf ppf "x.diagonal(dim1=%d, dim2=%d)" dim1 dim2
-      | Swapaxes axes -> Fmt.(pf ppf "x%a" (list ~sep:cut pp_swap_axis) axes)
-      | Id -> Fmt.string ppf "x"
+          Fmt.pf ppf ".diagonal(dim1=%d, dim2=%d)" dim1 dim2
+      | Swapaxes axes -> Fmt.(pf ppf "%a" (list ~sep:cut pp_swap_axis) axes)
+      | Id -> Fmt.string ppf ""
   end
 
   type t = {
@@ -689,6 +690,8 @@ end = struct
     Fmt.pf ppf "operations: @[[%a]@], contracted: @[[%a]@], preserved: @[[%a]@]"
       Fmt.(list ~sep:comma Op.pp)
       operations l contracted l preserved
+
+  let pp_ops ppf ops = Fmt.(pf ppf "x%a" (list ~sep:cut Op.pp) ops)
 
   let match_op contracted_tensor result =
     match find_diag contracted_tensor result with
@@ -724,23 +727,23 @@ end = struct
       make ~contracted ~result_type |> pp Fmt.stdout
     in
     go [ "a"; "b"; "c"; "d" ] [ "a"; "b"; "c"; "d" ];
-    [%expect {| operations: [x], contracted: [], preserved: [a; b; c; d] |}];
+    [%expect {| operations: [], contracted: [], preserved: [a; b; c; d] |}];
     go [ "i"; "i" ] [];
-    [%expect {| operations: [x.trace()], contracted: [i], preserved: [] |}];
+    [%expect {| operations: [.trace()], contracted: [i], preserved: [] |}];
     go [ "i"; "i" ] [ "i" ];
     [%expect
       {| 
-      operations: [x.diagonal(dim1=0, dim2=1)], contracted: [i], preserved: 
+      operations: [.diagonal(dim1=0, dim2=1)], contracted: [i], preserved: 
       [] 
       |}];
     go [ "i" ] [];
-    [%expect {| operations: [x.sum()], contracted: [i], preserved: [] |}];
+    [%expect {| operations: [.sum()], contracted: [i], preserved: [] |}];
     go [ "i"; "j" ] [ "j"; "i" ];
     [%expect
-      {| operations: [x.transpose()], contracted: [], preserved: [i; j] |}];
+      {| operations: [.transpose()], contracted: [], preserved: [i; j] |}];
     go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
     [%expect
-      {| operations: [x.swapaxes(0, 2)], contracted: [], preserved: [i; j; k] |}]
+      {| operations: [.swapaxes(0, 2)], contracted: [], preserved: [i; j; k] |}]
 
   let%expect_test "operations" =
     let go contracted result_type =
@@ -748,21 +751,21 @@ end = struct
       Fmt.pr "%a\n" Fmt.(list ~sep:comma Op.pp) operations
     in
     go [ "i" ] [ "i" ];
-    [%expect {| x |}];
+    [%expect {| |}];
     go [ "i"; "i" ] [];
-    [%expect {| x.trace() |}];
+    [%expect {| .trace() |}];
     go [ "i"; "j" ] [ "i"; "j" ];
-    [%expect {| x |}];
+    [%expect {| |}];
     go [ "i"; "j" ] [ "j"; "i" ];
-    [%expect {| x.transpose() |}];
+    [%expect {| .transpose() |}];
     go [ "i" ] [];
-    [%expect {| x.sum() |}];
+    [%expect {| .sum() |}];
     go [ "i"; "j" ] [];
-    [%expect {| x.sum() |}];
+    [%expect {| .sum() |}];
     go [ "i"; "i" ] [ "i" ];
-    [%expect {| x.diagonal(dim1=0, dim2=1) |}];
+    [%expect {| .diagonal(dim1=0, dim2=1) |}];
     go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
-    [%expect {| x.swapaxes(0, 2) |}]
+    [%expect {| .swapaxes(0, 2) |}]
 end
 
 module Pyloops = struct
