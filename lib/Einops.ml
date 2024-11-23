@@ -788,6 +788,9 @@ module Pyloops = struct
           (List.map (fun index -> "N" ^ index) rhs_tensor));
 
     (* loops *)
+    (match free_indices with
+    | [] -> ()
+    | _ -> Fmt.pf ppf "# Loop over all free indices@.");
     let outer_indent =
       List.fold_left
         (fun indent index ->
@@ -795,6 +798,7 @@ module Pyloops = struct
           indent + 1)
         0 free_indices
     in
+    Fmt.pf ppf "%s# Loop over all summation indices@." (mk_indent outer_indent);
     Fmt.pf ppf "%stotal = 0@." (mk_indent outer_indent);
     let inner_indent =
       List.fold_left
