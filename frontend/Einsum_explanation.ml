@@ -89,10 +89,31 @@ let list_variables = function
        @ [ txt' " and "; code [ txt' last ] ]
         : El.t list)
 
-let radio : 'a. ?at:At.t list -> 'a -> ('a -> unit) -> El.t =
- fun ?(at = []) (value : 'a) f ->
-  let input_elem = input ~at:(At.type' (Jstr.v "radio") :: at) () in
-  Evr.endless_listen (as_target input_elem) Ev.change (fun _ -> f value);
+let radio :
+      'a. desc:string -> selected:bool signal -> 'a -> ('a -> unit) -> El.t =
+ fun ~desc ~selected value f ->
+  let base_classes =
+    "flex items-center justify-center rounded-md bg-white px-3 py-3 text-sm \
+     font-semibold uppercase text-gray-900 ring-1 ring-gray-300 \
+     hover:bg-gray-50 data-[checked]:bg-indigo-600 data-[checked]:text-white \
+     data-[checked]:ring-0 data-[focus]:data-[checked]:ring-2 \
+     data-[focus]:ring-2 data-[focus]:ring-indigo-600 \
+     data-[focus]:ring-offset-2 data-[checked]:hover:bg-indigo-500 sm:flex-1 \
+     [&:not([data-focus],[data-checked])]:ring-inset cursor-pointer \
+     focus:outline-none"
+  in
+  let attrs = At.[ v (Jstr.v "role") (Jstr.v "radio") ] in
+  let input_elem = span ~at:(attrs @ classes base_classes) [ txt' desc ] in
+  Elr.def_at (Jstr.v "data-checked")
+    (selected
+    |> S.map (fun selected -> if selected then Some (Jstr.v "true") else None))
+    input_elem;
+  Elr.def_at (Jstr.v "aria-checked")
+    (selected
+    |> S.map (fun selected ->
+           Some (Jstr.v (if selected then "true" else "false"))))
+    input_elem;
+  Evr.endless_listen (as_target input_elem) Ev.click (fun _ -> f value);
   input_elem
 
 let explain container contraction_str path_str =
@@ -103,45 +124,27 @@ let explain container contraction_str path_str =
 
   let code_preference_signal, code_preference_selector =
     let preference_signal, set_preference = S.create Einops.Numpy in
-    let base_classes =
-      "flex items-center justify-center rounded-md bg-white px-3 py-3 text-sm \
-       font-semibold uppercase text-gray-900 ring-1 ring-gray-300 \
-       hover:bg-gray-50 data-[checked]:bg-indigo-600 data-[checked]:text-white \
-       data-[checked]:ring-0 data-[focus]:data-[checked]:ring-2 \
-       data-[focus]:ring-2 data-[focus]:ring-indigo-600 \
-       data-[focus]:ring-offset-2 data-[checked]:hover:bg-indigo-500 sm:flex-1 \
-       [&:not([data-focus],[data-checked])]:ring-inset cursor-pointer \
-       focus:outline-none"
-    in
     let numpy_radio =
-      radio
-        ~at:
-          At.(
-            name (Jstr.v "code-preference")
-            :: id (Jstr.v "numpy-preference")
-            :: classes base_classes)
+      radio ~desc:"Numpy"
+        ~selected:
+          (preference_signal
+          |> S.map (function Einops.Numpy -> true | Pytorch -> false))
         Einops.Numpy set_preference
     in
     let torch_radio =
-      radio
-        ~at:
-          At.(
-            name (Jstr.v "code-preference")
-            :: id (Jstr.v "pytorch-preference")
-            :: classes base_classes)
+      radio ~desc:"Pytorch"
+        ~selected:
+          (preference_signal
+          |> S.map (function Einops.Numpy -> false | Pytorch -> true))
         Einops.Pytorch set_preference
     in
     let selector =
       Brr.El.(
         fieldset
-          [
-            numpy_radio;
-            label ~at:At.[ for' (Jstr.v "numpy-preference") ] [ txt' "Numpy" ];
-            torch_radio;
-            label
-              ~at:At.[ for' (Jstr.v "pytorch-preference") ]
-              [ txt' "Pytorch" ];
-          ])
+          ~at:
+            (At.v (Jstr.v "role") (Jstr.v "radiogroup")
+            :: classes "mt-2 grid grid-cols-2 gap-3 max-w-48")
+          [ numpy_radio; torch_radio ])
     in
     (preference_signal, selector)
   in
@@ -152,6 +155,11 @@ let explain container contraction_str path_str =
       match contractions with
       | Unary_contraction _ -> false
       | Binary_contractions contractions -> List.length contractions > 1
+    in
+    let framework_name =
+      match code_preference with
+      | Einops.Numpy -> "Numpy"
+      | Pytorch -> "Pytorch"
     in
     let tensor_diagram_info =
       info
@@ -184,7 +192,7 @@ let explain container contraction_str path_str =
               [
                 span [ txt' "Contract " ];
                 code [ txt' Fmt.(str "%a" (list string ~sep:sp) contracted) ];
-                span [ txt' "(in Pytorch this would be " ];
+                span [ txt' Fmt.(str "(in %s this would be " framework_name) ];
                 code
                   [
                     txt'
@@ -234,12 +242,15 @@ let explain container contraction_str path_str =
                             l_tensor (list string ~sep:sp) r_tensor
                             (list string ~sep:sp) result_type);
                     ];
-                  span [ txt' ") (in Pytorch this would be " ];
+                  span
+                    [ txt' (Fmt.str ") (in %s this would be " framework_name) ];
                   code
                     [
                       txt'
                         Fmt.(
-                          str "%a" Einops.General_matmul.pp_expr general_matmul);
+                          str "%a"
+                            (Einops.General_matmul.pp_expr code_preference)
+                            general_matmul);
                     ];
                   span [ txt' ")." ];
                   Tensor_diagram.draw_binary_contraction l_tensor r_tensor

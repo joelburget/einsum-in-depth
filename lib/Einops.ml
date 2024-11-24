@@ -922,7 +922,7 @@ module General_matmul : sig
   }
 
   val make : string list -> string list -> string list -> t
-  val pp_expr : t Fmt.t
+  val pp_expr : code_backend -> t Fmt.t
 end = struct
   type packed = { batch_dims : string list; matrix : string list * string list }
 
@@ -943,10 +943,11 @@ end = struct
 
   let shape = Fmt.(parens (list ~sep:comma shape_slot))
 
-  let pp_expr ppf { view_l; view_r; unpack_squeeze; _ } =
+  let pp_expr backend ppf { view_l; view_r; unpack_squeeze; _ } =
+    let view_fn = match backend with Numpy -> "reshape" | Pytorch -> "view" in
     Fmt.(
-      pf ppf "torch.matmul(@[<hov 2>x.view%a,@ y.view%a@])%a" shape view_l shape
-        view_r (list squeeze) unpack_squeeze)
+      pf ppf "(@[<hov 2>x.%s%a@ %@@ y.%s%a@])%a" view_fn shape view_l view_fn
+        shape view_r (list squeeze) unpack_squeeze)
 
   let%expect_test "print squeeze" =
     Fmt.pr "@[%a@]@." (Fmt.list squeeze) [ 1; 2; 3 ];
