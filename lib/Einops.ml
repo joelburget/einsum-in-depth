@@ -358,8 +358,12 @@ end = struct
       in
       match op with
       | Tensordot1 ix ->
-          Fmt.pf ppf "%s.tensordot(@[%a,@ %a,@ %d@])" backend_name pp_arg1 arg1
-            pp_arg2 arg2 ix
+          if ix = 2 then
+            Fmt.pf ppf "%s.tensordot(@[%a,@ %a@])" backend_name pp_arg1 arg1
+              pp_arg2 arg2
+          else
+            Fmt.pf ppf "%s.tensordot(@[%a,@ %a,@ %d@])" backend_name pp_arg1
+              arg1 pp_arg2 arg2 ix
       | Tensordot2 ixs ->
           Fmt.pf ppf "%s.tensordot(@[<hov 1>%a,@ %a,@ [%a]@])" backend_name
             pp_arg1 arg1 pp_arg2 arg2
@@ -369,7 +373,7 @@ end = struct
           Fmt.pf ppf "%s.matmul(@[%a,@ %a@])" backend_name pp_arg1 arg1 pp_arg2
             arg2
       | Inner ->
-          Fmt.pf ppf "%s.inner([@[%a,@ %a@]])" backend_name pp_arg1 arg1 pp_arg2
+          Fmt.pf ppf "%s.inner(@[%a,@ %a@])" backend_name pp_arg1 arg1 pp_arg2
             arg2
       | Diagonal { input_no; dim1; dim2 } -> (
           match (backend, input_no) with
@@ -434,15 +438,15 @@ end = struct
       Fmt.pr "%a@." (Fmt.option debug_op_pp) (match_tensordot x y z)
     in
     go [ "a"; "b"; "c" ] [ "d"; "e" ] [ "a"; "b"; "c"; "d"; "e" ];
-    [%expect {| tensordot 0 |}];
+    [%expect {| np.tensordot(x, y, 0) |}];
     go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
-    [%expect {| tensordot 1 |}];
+    [%expect {| np.tensordot(x, y, 1) |}];
     go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
-    [%expect {| tensordot 2 |}];
+    [%expect {| np.tensordot(x, y) |}];
     go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
-    [%expect {| tensordot [(0, 1), (1, 0)] |}];
+    [%expect {| np.tensordot(x, y, [(0, 1), (1, 0)]) |}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [];
-    [%expect {| tensordot [(0, 0), (2, 2), (1, 1)] |}]
+    [%expect {| np.tensordot(x, y, [(0, 0), (2, 2), (1, 1)]) |}]
 
   let rec match_ops l r result =
     match first_repeat_indices l with
@@ -506,17 +510,17 @@ end = struct
       Fmt.pr "%a\n" Fmt.(list ~sep:comma debug_op_pp) operations
     in
     go [ "i" ] [ "i" ] [];
-    [%expect {| inner |}];
+    [%expect {| np.inner(x, y) |}];
     go [ "i"; "j" ] [ "j"; "k" ] [ "i"; "k" ];
-    [%expect {| matmul |}];
+    [%expect {| np.matmul(x, y) |}];
     go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
-    [%expect {| tensordot [(0, 1), (1, 0)] |}];
+    [%expect {| np.tensordot(x, y, [(0, 1), (1, 0)]) |}];
     go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
-    [%expect {| tensordot 2 |}];
+    [%expect {| np.tensordot(x, y) |}];
     go [ "a"; "b"; "c" ] [ "c"; "d" ] [ "a"; "b"; "d" ];
-    [%expect {| tensordot 1 |}];
+    [%expect {| np.tensordot(x, y, 1) |}];
     go [ "a"; "b"; "c" ] [ "d"; "e" ] [ "a"; "b"; "c"; "d"; "e" ];
-    [%expect {| tensordot 0 |}]
+    [%expect {| np.tensordot(x, y, 0) |}]
 
   let%expect_test "make" =
     let go l r other_tensors result_type =
@@ -525,43 +529,46 @@ end = struct
     go [ "a"; "b" ] [ "c"; "d" ] [] [ "a"; "b"; "c"; "d" ];
     [%expect
       {| 
-      l: [a; b], r: [c; d], operations: [tensordot 0], contracted: [], zipped:
-      [], batch: [a; b; c; d], result_type: [a; b; c; d] 
+      l: [a; b], r: [c; d], operations: [np.tensordot(x, y, 0)], contracted:
+      [], zipped: [], batch: [a; b; c; d], result_type: [a; b; c; d] 
       |}];
     go [ "i"; "i" ] [ "i" ] [] [ "i" ];
     [%expect
       {| 
-      l: [i; i], r: [i], operations: [diagonal (0, 0, 1), mul], contracted: 
+      l: [i; i], r: [i], operations: [x.diagonal(axis1=0, axis2=1), (x * y)], contracted: 
       [], zipped: [i], batch: [], result_type: [i]
       |}];
     (* This could also be interpreted as `matmul; diag`, probably other ways *)
     go [ "a"; "a" ] [ "a"; "a" ] [] [ "a" ];
     [%expect
       {| 
-      l: [a; a], r: [a; a], operations: [diagonal (0, 0, 1), diagonal (1, 0, 1),
-                                        mul], contracted: [], zipped: [a], batch: 
-      [], result_type: [a]
+      l: [a; a], r: [a; a], operations: [x.diagonal(axis1=0, axis2=1), 
+                                        y.diagonal(axis1=0, axis2=1), (x * y)], contracted:
+      [], zipped: [a], batch: [], result_type: [a]
       |}];
     (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * v *)
     go [ "a"; "a"; "a" ] [ "a" ] [] [ "a" ];
     [%expect
       {| 
-      l: [a; a; a], r: [a], operations: [diagonal (0, 0, 1), diagonal (0, 0, 1),
-                                        mul], contracted: [], zipped: [a], batch: 
-      [], result_type: [a]
+      l: [a; a; a], r: [a], operations: [x.diagonal(axis1=0, axis2=1), 
+                                        x.diagonal(axis1=0, axis2=1), (x * y)], contracted:
+      [], zipped: [a], batch: [], result_type: [a]
       |}];
     (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * m.diagonal() *)
     go [ "a"; "a"; "a" ] [ "a"; "a" ] [] [];
     [%expect
       {|
-      l: [a; a; a], r: [a; a], operations: [diagonal (0, 0, 1), diagonal (0, 0, 1),
-                                           diagonal (1, 0, 1), inner], contracted: 
-      [a], zipped: [], batch: [], result_type: []
+      l: [a; a; a], r: [a; a], operations: [x.diagonal(axis1=0, axis2=1),
+                                           x.diagonal(axis1=0, axis2=1),
+                                           y.diagonal(axis1=0, axis2=1),
+                                           np.inner(x, y)], contracted: [a], zipped:
+      [], batch: [], result_type: []
       |}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [] [];
     [%expect
       {|
-      l: [a; j; k], r: [a; j; k], operations: [tensordot [(0, 0), (2, 2), (1, 1)]], contracted:
+      l: [a; j; k], r: [a; j; k], operations: [np.tensordot(x, y, [(0, 0), 
+                                                             (2, 2), (1, 1)])], contracted:
       [a; j; k], zipped: [], batch: [], result_type: [] |}];
     go [ "a"; "j"; "k" ] [ "a"; "i"; "j" ] [ [ "a"; "i"; "k" ] ] [];
     [%expect
@@ -582,7 +589,7 @@ end = struct
       [ "n"; "l"; "i"; "j" ];
     [%expect
       {| 
-      l: [n; l; k], r: [i; j; k], operations: [tensordot [(2, 2)]], contracted:
+      l: [n; l; k], r: [i; j; k], operations: [np.tensordot(x, y, [(2, 2)])], contracted:
       [k], zipped: [], batch: [n; l; i; j], result_type: [n; l; i; j]
       |}]
 end
@@ -768,14 +775,13 @@ end = struct
     go [ "i"; "i" ] [ "i" ];
     [%expect
       {| 
-      operations: [.diagonal(dim1=0, dim2=1)], contracted: [i], preserved: 
+      operations: [.diagonal(axis1=0, axis2=1)], contracted: [i], preserved: 
       [] 
       |}];
     go [ "i" ] [];
     [%expect {| operations: [.sum()], contracted: [i], preserved: [] |}];
     go [ "i"; "j" ] [ "j"; "i" ];
-    [%expect
-      {| operations: [.transpose()], contracted: [], preserved: [i; j] |}];
+    [%expect {| operations: [.T], contracted: [], preserved: [i; j] |}];
     go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
     [%expect
       {| operations: [.swapaxes(0, 2)], contracted: [], preserved: [i; j; k] |}]
@@ -792,13 +798,13 @@ end = struct
     go [ "i"; "j" ] [ "i"; "j" ];
     [%expect {| |}];
     go [ "i"; "j" ] [ "j"; "i" ];
-    [%expect {| .transpose() |}];
+    [%expect {| .T |}];
     go [ "i" ] [];
     [%expect {| .sum() |}];
     go [ "i"; "j" ] [];
     [%expect {| .sum() |}];
     go [ "i"; "i" ] [ "i" ];
-    [%expect {| .diagonal(dim1=0, dim2=1) |}];
+    [%expect {| .diagonal(axis1=0, axis2=1) |}];
     go [ "i"; "j"; "k" ] [ "k"; "j"; "i" ];
     [%expect {| .swapaxes(0, 2) |}]
 end
