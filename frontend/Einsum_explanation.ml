@@ -173,7 +173,13 @@ let explain container contraction_str path_str =
                     matrix or vector). Each line emanating from a tensor \
                     represents one of that tensor's dimensions. When two \
                     tensors are connected by a single line that represents a \
-                    contraction (summation over the connected indices). See ";
+                    contraction (summation over the connected indices). Look \
+                    through the examples to see how common operations \
+                    correspond to tensor diagrams.";
+               ];
+             p
+               [
+                 txt' "See ";
                  a "https://tensornetwork.org/diagrams/" "tensornetwork.org";
                  txt' " or ";
                  a "https://www.tensors.net/intro" "tensors.net";

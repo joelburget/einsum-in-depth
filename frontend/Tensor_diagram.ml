@@ -3,6 +3,14 @@ open Cytoscape
 
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
 
+(*
+let node_colors =
+  [| "0000CD"; "8B0000"; "4B0082"; "556B2F"; "FA8072"; "008080" |]
+
+let get_color i =
+  "#" ^ if i < Array.length node_colors then node_colors.(i) else "000000"
+  *)
+
 let draw_unary_contraction Unary_contraction.{ contracted; preserved; _ } =
   let dangling_nodes =
     preserved

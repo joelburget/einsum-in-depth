@@ -1155,10 +1155,10 @@ end = struct
                  Binary_contraction.make cl cr ~other_tensors:new_tensors
                    ~result_type:result_group
                in
-               let new_tensors =
-                 List.append new_tensors
-                   [ single_contraction.batch @ single_contraction.zipped ]
+               let result_tensor =
+                 single_contraction.batch @ single_contraction.zipped
                in
+               let new_tensors = List.append new_tensors [ result_tensor ] in
                let step =
                  Binary_contraction.make cl cr ~other_tensors:new_tensors
                    ~result_type:result_group
@@ -1168,63 +1168,84 @@ end = struct
       in
       Binary_contractions steps
 
-  (* XXX
-     let pp_explain_binary_contraction ppf
-         (single_contraction : Binary_contraction.t) =
-       let l_tensor, r_tensor = (single_contraction.l, single_contraction.r) in
-       let general_matmul =
-         General_matmul.make l_tensor r_tensor single_contraction.result_type
-       in
-       let l = Fmt.(list string ~sep:sp) in
-       Fmt.(
-         pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" l
-           single_contraction.contracted l l_tensor l r_tensor l
-           single_contraction.result_type General_matmul.pp_expr general_matmul)
+  let%expect_test "steps" =
+    let go in_tensors out_tensor =
+      match get_contractions (in_tensors, out_tensor) with
+      | Unary_contraction _ -> Fmt.pr "fail"
+      | Binary_contractions steps ->
+          List.iter
+            (fun Binary_contraction.{ l; r; result_type; _ } ->
+              Fmt.(
+                pr "@[l: [%a], r: [%a], result_type: [%a]@]@."
+                  (list ~sep:comma string) l (list ~sep:comma string) r
+                  (list ~sep:comma string) result_type))
+            steps
+    in
+    go [ [ "a"; "b" ]; [ "b"; "c" ]; [ "c"; "d" ] ] [ "a"; "d" ];
+    [%expect
+      {|
+      l: [a; b], r: [b; c], result_type: [a; c]
+      l: [a; c], r: [c; d], result_type: [a; d]
+    |}]
 
-     let pp_explain_unary_contraction ppf
-         (tensor, Unary_contraction.{ operations; contracted; preserved }) =
-       let l = Fmt.(list string ~sep:sp) in
-       Fmt.(
-         pf ppf "@[<2>contract@ %a (@[%a@] -> @[%a@])@ (%a)@]" l contracted l
-           tensor l preserved
-           (list ~sep:sp Unary_contraction.Op.pp)
-           operations)
+  let pp_explain_binary_contraction backend ppf
+      (single_contraction : Binary_contraction.t) =
+    let l_tensor, r_tensor = (single_contraction.l, single_contraction.r) in
+    let general_matmul =
+      General_matmul.make l_tensor r_tensor single_contraction.result_type
+    in
+    let l = Fmt.(list string ~sep:sp) in
+    Fmt.(
+      pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" l
+        single_contraction.contracted l l_tensor l r_tensor l
+        single_contraction.result_type
+        (General_matmul.pp_expr backend)
+        general_matmul)
 
-        let%expect_test "explain contractions" =
-          let go rewrite path =
-            match get_contractions ~path rewrite with
-            | Binary_contractions cs ->
-                Fmt.(pr "@[%a@]@." (list pp_explain_binary_contraction) cs)
-            | Unary_contraction (tensor, unary_contraction) ->
-                Fmt.pr "@[%a@]@." pp_explain_unary_contraction
-                  (tensor, unary_contraction)
-          in
-          let rewrite =
-            ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
-          in
-          go rewrite [ (1, 2); (0, 1) ];
-          [%expect
-            {|
+  let pp_explain_unary_contraction backend ppf
+      (tensor, Unary_contraction.{ operations; contracted; preserved }) =
+    let l = Fmt.(list string ~sep:sp) in
+    Fmt.(
+      pf ppf "@[<2>contract@ %a (@[%a@] -> @[%a@])@ (%a)@]" l contracted l
+        tensor l preserved
+        (list ~sep:sp (Unary_contraction.Op.pp backend))
+        operations)
+
+  let%expect_test "explain contractions" =
+    let go rewrite path =
+      match get_contractions ~path rewrite with
+      | Binary_contractions cs ->
+          Fmt.(pr "@[%a@]@." (list (pp_explain_binary_contraction Numpy)) cs)
+      | Unary_contraction (tensor, unary_contraction) ->
+          Fmt.pr "@[%a@]@."
+            (pp_explain_unary_contraction Numpy)
+            (tensor, unary_contraction)
+    in
+    let rewrite =
+      ([ [ "a"; "i"; "j" ]; [ "a"; "j"; "k" ]; [ "a"; "i"; "k" ] ], [])
+    in
+    go rewrite [ (1, 2); (0, 1) ];
+    [%expect
+      {|
             contract k (a j k, a i k -> a i j)
               (torch.matmul(x, y.view(0, 2, 1)))
             contract a i j (a i j, a i j -> )
               ((x * y).sum())
             |}];
-          go rewrite [ (0, 1); (0, 1) ];
-          [%expect
-            {|
+    go rewrite [ (0, 1); (0, 1) ];
+    [%expect
+      {|
             contract j (a i j, a j k -> a i k)
               (torch.matmul(x, y.view(0, 2, 1)))
             contract a i k (a i k, a i k -> )
               ((x * y).sum())
             |}];
-          let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
-          go rewrite [ (0, 1) ];
-          [%expect {| contract k (i k, k j -> i j) (torch.matmul(x, y.view(1, 0))) |}];
-          let rewrite = ([ [ "i"; "i" ] ], []) in
-          go rewrite [];
-          [%expect {| contract i (i i -> ) (x.trace()) |}]
-  *)
+    let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
+    go rewrite [ (0, 1) ];
+    [%expect {| contract k (i k, k j -> i j) (torch.matmul(x, y.view(1, 0))) |}];
+    let rewrite = ([ [ "i"; "i" ] ], []) in
+    go rewrite [];
+    [%expect {| contract i (i i -> ) (.trace()) |}]
 
   let show_loops rewrite =
     let lhs_tensors, rhs_tensor = rewrite in
@@ -1245,8 +1266,10 @@ end = struct
     [%expect
       {|
       result = np.zeros((Ni, Nj))
+      # Loop over all free indices
       for i in range(Ni):
           for j in range(Nj):
+              # Loop over all summation indices
               total = 0
               for k in range(Nk):
                   total += A[i, k] * B[k, j]
@@ -1257,6 +1280,7 @@ end = struct
     go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
     [%expect
       {|
+      # Loop over all summation indices
       total = 0
       for s in range(Ns):
           for t in range(Nt):
@@ -1268,6 +1292,7 @@ end = struct
     [%expect
       {|
       result = np.zeros((Ni))
+      # Loop over all free indices XXX what is this?
       for i in range(Ni):
           total = 0
           total += A[i, i]
@@ -1278,6 +1303,7 @@ end = struct
     go ([ [ "i"; "i" ] ], []);
     [%expect
       {|
+      # Loop over all summation indices
       total = 0
       for i in range(Ni):
           total += A[i, i]
@@ -1287,6 +1313,7 @@ end = struct
     go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
     [%expect
       {|
+      # Loop over all summation indices
       total = 0
       for s in range(Ns):
           for t in range(Nt):
@@ -1298,9 +1325,11 @@ end = struct
     [%expect
       {|
       result = np.zeros((Nb, Ni, Nj))
+      # Loop over all free indices
       for b in range(Nb):
           for i in range(Ni):
               for j in range(Nj):
+                  # Loop over all summation indices
                   total = 0
                   total += A[b, i] * B[b, j]
                   result[b, i, j] = total

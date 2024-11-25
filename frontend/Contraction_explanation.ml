@@ -204,13 +204,18 @@ let explain container a_type_str b_type_str contraction_str =
   let parsed_b_signal, b_input, b_err_elem =
     bracketed_parsed_input parse_type b_type_str
   in
-  let contraction_signal, c_input, c_err_elem =
-    parsed_input Einsum_parser.Parse.parse contraction_str
+
+  (* let contraction_signal , c_input, c_err_elem = *)
+  (* parsed_input Einsum_parser.parse contraction_str *)
+  let logger, c_input, current_input =
+    input' ~at:input_classes contraction_str (E.select [])
   in
+  Logr.may_hold logger;
+  let contraction_signal = S.map Einsum_parser.parse current_input in
 
   let f as_opt bs_opt contraction_opt =
     match (as_opt, bs_opt, contraction_opt) with
-    | Some as_, Some bs, Some contraction -> (
+    | Some as_, Some bs, Ok contraction -> (
         match validate_inputs as_ bs contraction with
         | Ok validated_inputs -> explain_contraction validated_inputs
         | Error err -> err)
@@ -226,6 +231,6 @@ let explain container a_type_str b_type_str contraction_str =
     [
       div [ txt' "A: "; a_input; a_err_elem ];
       div [ txt' "B: "; b_input; b_err_elem ];
-      div [ txt' "Contraction: "; c_input; c_err_elem ];
+      div [ txt' "Contraction: "; c_input (* ; c_err_elem *) ];
       result_output;
     ]
