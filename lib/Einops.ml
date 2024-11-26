@@ -312,23 +312,33 @@ module Binary_contraction : sig
           (** Tensordot operation with an explicit list of dimensions to contract *)
       | Matmul
       | Inner
-      | Diagonal of { input_no : int; dim1 : int; dim2 : int }
-          (** Diagonalize an input matrix *)
       | Mul  (** Multiply two matrices (pointwise) *)
 
     val pp : code_backend -> 'a Fmt.t -> 'a -> 'b Fmt.t -> 'b -> t Fmt.t
   end
 
+  module Diagonal : sig
+    type t = { dim1 : int; dim2 : int }
+
+    val pp : code_backend -> t Fmt.t
+  end
+
+  module Ops : sig
+    type t = { diag_l : Diagonal.t list; diag_r : Diagonal.t list; op : Op.t }
+
+    val pp : code_backend -> t Fmt.t
+  end
+
   type t = {
     l : string list;
     r : string list;
-    operations : Op.t list;  (** Operations to perform in order *)
+    operations : Ops.t option;  (** Operations to perform in order *)
     aligned : string list;
     contracted : string list;
     result_type : string list;
   }
 
-  val pp : t Fmt.t
+  val pp : code_backend -> t Fmt.t
 
   val make :
     string list ->
@@ -349,7 +359,6 @@ end = struct
       | Tensordot2 of (int * int) list
       | Matmul
       | Inner
-      | Diagonal of { input_no : int; dim1 : int; dim2 : int }
       | Mul
 
     let pp backend pp_arg1 arg1 pp_arg2 arg2 ppf op =
@@ -369,33 +378,38 @@ end = struct
             pp_arg1 arg1 pp_arg2 arg2
             Fmt.(list ~sep:comma (parens (pair int int ~sep:comma)))
             ixs
-      | Matmul ->
-          Fmt.pf ppf "%s.matmul(@[%a,@ %a@])" backend_name pp_arg1 arg1 pp_arg2
-            arg2
+      | Matmul -> Fmt.pf ppf "(@[%a@ %@@ %a@])" pp_arg1 arg1 pp_arg2 arg2
       | Inner ->
           Fmt.pf ppf "%s.inner(@[%a,@ %a@])" backend_name pp_arg1 arg1 pp_arg2
             arg2
-      | Diagonal { input_no; dim1; dim2 } -> (
-          match (backend, input_no) with
-          | Numpy, 0 ->
-              Fmt.pf ppf "%a.diagonal(@[axis1=%d,@ axis2=%d@])" pp_arg1 arg1
-                dim1 dim2
-          | Numpy, _ ->
-              Fmt.pf ppf "%a.diagonal(@[axis1=%d,@ axis2=%d@])" pp_arg2 arg2
-                dim1 dim2
-          | Pytorch, 0 ->
-              Fmt.pf ppf "%a.diagonal(@[dim1=%d,@ dim2=%d@])" pp_arg1 arg1 dim1
-                dim2
-          | Pytorch, _ ->
-              Fmt.pf ppf "%a.diagonal(@[dim1=%d,@ dim2=%d@])" pp_arg2 arg2 dim1
-                dim2)
       | Mul -> Fmt.pf ppf "(@[%a * %a@])" pp_arg1 arg1 pp_arg2 arg2
+  end
+
+  module Diagonal = struct
+    type t = { dim1 : int; dim2 : int }
+
+    let pp backend ppf { dim1; dim2 } =
+      match (backend, dim1, dim2) with
+      | _, 0, 1 -> Fmt.pf ppf ".diagonal()"
+      | Numpy, _, _ -> Fmt.pf ppf ".diagonal(@[axis1=%d,@ axis2=%d@])" dim1 dim2
+      | Pytorch, _, _ -> Fmt.pf ppf ".diagonal(@[dim1=%d,@ dim2=%d@])" dim1 dim2
+  end
+
+  module Ops = struct
+    type t = { diag_l : Diagonal.t list; diag_r : Diagonal.t list; op : Op.t }
+
+    let pp_diag_list arg_name backend ppf =
+      Fmt.(pf ppf "%s%a" arg_name (list ~sep:cut (Diagonal.pp backend)))
+
+    let pp backend ppf { diag_l; diag_r; op } =
+      Op.pp backend (pp_diag_list "x" backend) diag_l (pp_diag_list "y" backend)
+        diag_r ppf op
   end
 
   type t = {
     l : string list;
     r : string list;
-    operations : Op.t list;
+    operations : Ops.t option;
     aligned : string list;
     contracted : string list;
     result_type : string list;
@@ -403,13 +417,13 @@ end = struct
 
   let debug_op_pp = Op.pp Numpy Fmt.string "x" Fmt.string "y"
 
-  let pp ppf { l; r; operations; aligned; contracted; result_type } =
+  let pp backend ppf { l; r; operations; aligned; contracted; result_type } =
     let lst = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf
       "@[l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], aligned: @[[%a]@], \
        contracted: @[[%a]@], result_type: @[[%a]@]@]"
       lst l lst r
-      Fmt.(list ~sep:comma debug_op_pp)
+      Fmt.(option (Ops.pp backend))
       operations lst aligned lst contracted lst result_type
 
   (* Try matching two inputs and an output to a tensordot operation *)
@@ -449,26 +463,36 @@ end = struct
 
   let rec match_ops l r result =
     match first_repeat_indices l with
-    | Some (x, dim1, dim2) ->
+    | Some (x, dim1, dim2) -> (
         let l = remove_indices l [ dim1; dim2 ] @ [ x ] in
-        Op.Diagonal { input_no = 0; dim1; dim2 } :: match_ops l r result
+        match match_ops l r result with
+        | None -> None
+        | Some Ops.{ diag_l; diag_r; op } ->
+            Some Ops.{ diag_l = Diagonal.{ dim1; dim2 } :: diag_l; diag_r; op })
     | None -> (
         match first_repeat_indices r with
-        | Some (x, dim1, dim2) ->
+        | Some (x, dim1, dim2) -> (
             let r = remove_indices r [ dim1; dim2 ] @ [ x ] in
-            Op.Diagonal { input_no = 1; dim1; dim2 } :: match_ops l r result
+            match match_ops l r result with
+            | None -> None
+            | Some { diag_l; diag_r; op } ->
+                Some
+                  Ops.{ diag_l; diag_r = Diagonal.{ dim1; dim2 } :: diag_r; op }
+            )
         | None -> (
-            if l = r && r = result then [ Op.Mul ]
-            else
-              match (l, r, result) with
-              | [ x ], [ y ], [] when x = y -> [ Op.Inner ]
-              | [ x; y ], [ y'; z ], [ x'; z' ] when x = x' && y = y' && z = z'
-                ->
-                  [ Matmul ] (* TODO: use General_matmul? *)
-              | x, y, z -> (
-                  match match_tensordot x y z with
-                  | Some op -> [ op ]
-                  | None -> [])))
+            let op =
+              if l = r && r = result then Some Op.Mul
+              else
+                match (l, r, result) with
+                | [ x ], [ y ], [] when x = y -> Some Op.Inner
+                | [ x; y ], [ y'; z ], [ x'; z' ]
+                  when x = x' && y = y' && z = z' ->
+                    Some Matmul
+                | x, y, z -> match_tensordot x y z
+            in
+            match op with
+            | Some op -> Some Ops.{ diag_l = []; diag_r = []; op }
+            | None -> None))
 
   let make l r ~other_tensors ~target =
     let inter, union, diff = SS.(inter, union, diff) in
@@ -495,12 +519,12 @@ end = struct
   let%expect_test "operations" =
     let go l r target =
       let { operations; _ } = make l r ~other_tensors:[] ~target in
-      Fmt.pr "%a\n" Fmt.(list ~sep:comma debug_op_pp) operations
+      Fmt.pr "%a\n" Fmt.(option (Ops.pp Numpy)) operations
     in
     go [ "i" ] [ "i" ] [];
     [%expect {| np.inner(x, y) |}];
     go [ "i"; "j" ] [ "j"; "k" ] [ "i"; "k" ];
-    [%expect {| np.matmul(x, y) |}];
+    [%expect {| (x @ y) |}];
     go [ "a"; "b"; "c" ] [ "b"; "a"; "d" ] [ "c"; "d" ];
     [%expect {| np.tensordot(x, y, [(0, 1), (1, 0)]) |}];
     go [ "a"; "b"; "c" ] [ "c"; "b" ] [ "a" ];
@@ -512,12 +536,12 @@ end = struct
 
   let%expect_test "make" =
     let go l r other_tensors target =
-      make l r ~other_tensors ~target |> pp Fmt.stdout
+      make l r ~other_tensors ~target |> pp Numpy Fmt.stdout
     in
     go [ "a"; "c" ] [ "c"; "d" ] [] [ "a"; "d" ];
     [%expect
       {|
-      l: [a; c], r: [c; d], operations: [np.matmul(x, y)], aligned: [c], contracted:
+      l: [a; c], r: [c; d], operations: [(x @ y)], aligned: [c], contracted:
       [c], result_type: [a; d]
     |}];
     go [ "a"; "b" ] [ "c"; "d" ] [] [ "a"; "b"; "c"; "d" ];
@@ -527,35 +551,31 @@ end = struct
       [], result_type: [a; b; c; d] |}];
     go [ "i"; "i" ] [ "i" ] [] [ "i" ];
     [%expect
-      {| 
-      l: [i; i], r: [i], operations: [x.diagonal(axis1=0, axis2=1), (x * y)], aligned: 
-      [i], contracted: [], result_type: [i]
+      {|
+      l: [i; i], r: [i], operations: [(x.diagonal() * y)], aligned: [i], contracted:
+      [], result_type: [i]
       |}];
     (* This could also be interpreted as `matmul; diag`, probably other ways *)
     go [ "a"; "a" ] [ "a"; "a" ] [] [ "a" ];
     [%expect
-      {| 
-      l: [a; a], r: [a; a], operations: [x.diagonal(axis1=0, axis2=1), 
-                                        y.diagonal(axis1=0, axis2=1), (x * y)], aligned:
+      {|
+      l: [a; a], r: [a; a], operations: [(x.diagonal() * y.diagonal())], aligned:
       [a], contracted: [], result_type: [a]
       |}];
     (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * v *)
     go [ "a"; "a"; "a" ] [ "a" ] [] [ "a" ];
     [%expect
-      {| 
-      l: [a; a; a], r: [a], operations: [x.diagonal(axis1=0, axis2=1), 
-                                        x.diagonal(axis1=0, axis2=1), (x * y)], aligned:
+      {|
+      l: [a; a; a], r: [a], operations: [(x.diagonal().diagonal() * y)], aligned:
       [a], contracted: [], result_type: [a]
       |}];
     (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * m.diagonal() *)
     go [ "a"; "a"; "a" ] [ "a"; "a" ] [] [];
     [%expect
       {|
-      l: [a; a; a], r: [a; a], operations: [x.diagonal(axis1=0, axis2=1),
-                                           x.diagonal(axis1=0, axis2=1),
-                                           y.diagonal(axis1=0, axis2=1),
-                                           np.inner(x, y)], aligned: [a], contracted:
-      [a], result_type: []
+      l: [a; a; a], r: [a; a], operations: [np.inner(x.diagonal().diagonal(),
+                                                     y.diagonal())], aligned:
+      [a], contracted: [a], result_type: []
       |}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [] [];
     [%expect
@@ -835,7 +855,11 @@ module Pyloops = struct
           indent + 1)
         0 free_indices
     in
-    Fmt.pf ppf "%s# Loop over all summation indices@." (mk_indent outer_indent);
+    (match summation_indices with
+    | [] -> ()
+    | _ ->
+        Fmt.pf ppf "%s# Loop over all summation indices@."
+          (mk_indent outer_indent));
     Fmt.pf ppf "%stotal = 0@." (mk_indent outer_indent);
     let inner_indent =
       List.fold_left
@@ -872,251 +896,6 @@ module Pyloops = struct
     match rhs_tensor with
     | [] -> Fmt.pf ppf "return total@."
     | _ -> Fmt.pf ppf "return result@."
-end
-
-(** The contraction of two tensors as a generalized matmul.
-
- Example "a b c, a b d -> a c d":
-   
-   Contract (multiply along axis): b
-   Zip (batch axis): a
-   Leave (unique to one side): c d
-   
-   Steps:
-   1. Pack tensors (a b c -> a c d)
-   2. Perform matmul
-   
-        a c b
-        a b d
-     -> a c d
-   
-   3. Unpack (squeeze): a c b -> a c b
-
- Example a b, b a -> a
-   Pack: 
-     a 1 b
-     a b 1
-   Matmul -> a 1 1
-   Unpack a 1 1 -> a
-
- Example a b, b a ->
-   Pack: 
-     1 (a b)
-     (a b) 1
-   Matmul -> 1 1
-   Unpack 1 1 -> 1
- *)
-module General_matmul : sig
-  type packed = { batch_dims : string list; matrix : string list * string list }
-  (** A packed argument to a matmul consists of batch dimensions followed by two matrix dimensions. *)
-
-  type t = {
-    pack : packed * packed;  (** First pack both arguments to the matmul. *)
-    view_l : string list list option;
-        (** Instructions for packing the left tensor. Batch dimensions followed by matrix dimensions. *)
-    view_r : string list list option;  (** See [view_l] *)
-    packed_matmul : string list * string list * string list;
-        (** Output of matmul before unpacking. Batch dimensions, followed by both matrix dimensions. *)
-    unpack_squeeze : int list;  (** List of dimensions to squeeze. *)
-  }
-
-  val make : string list -> string list -> string list -> t
-  val pp_expr : code_backend -> t Fmt.t
-end = struct
-  type packed = { batch_dims : string list; matrix : string list * string list }
-
-  type t = {
-    pack : packed * packed;
-    view_l : string list list option;
-    view_r : string list list option;
-    packed_matmul : string list * string list * string list;
-    unpack_squeeze : int list;
-  }
-
-  let squeeze ppf i = Fmt.pf ppf ".squeeze(%d)" i
-  let pp_d_string ppf str = Fmt.pf ppf "D%s" str
-
-  let shape_slot ppf strs =
-    match strs with
-    | [] -> Fmt.pf ppf "1"
-    | _ -> Fmt.(list ~sep:(any " * ") pp_d_string) ppf strs
-
-  let pp_shape = Fmt.(parens (list ~sep:comma shape_slot))
-  let view_fn = function Numpy -> "reshape" | Pytorch -> "view"
-
-  let pp_view backend ppf = function
-    | None -> Fmt.pf ppf ""
-    | Some shape -> Fmt.(pf ppf ".%s%a" (view_fn backend) pp_shape shape)
-
-  let pp_expr backend ppf { view_l; view_r; unpack_squeeze; _ } =
-    Fmt.(
-      pf ppf "(@[<hov 2>x%a@ %@@ y%a@])%a" (pp_view backend) view_l
-        (pp_view backend) view_r (list squeeze) unpack_squeeze)
-
-  let%expect_test "print squeeze" =
-    Fmt.pr "@[%a@]@." (Fmt.list squeeze) [ 1; 2; 3 ];
-    [%expect {| .squeeze(1).squeeze(2).squeeze(3) |}]
-
-  let rec replicate n x = if n = 0 then [] else x :: replicate (n - 1) x
-
-  let make input_l input_r output =
-    let input_l_s, input_r_s, output_s =
-      SS.(of_list input_l, of_list input_r, of_list output)
-    in
-    let l_counter, r_counter, output_counter =
-      Counter.(make input_l, make input_r, make output)
-    in
-    let common_inputs = SS.inter input_l_s input_r_s in
-
-    (* Contract (matmul) axes which appear on both inputs but not the output *)
-    let contracted = SS.diff common_inputs output_s |> SS.elements in
-
-    (* Dimensions which appear once in each input and the output *)
-    let get_ones m =
-      SM.fold (fun k v acc -> if v = 1 then SS.add k acc else acc) m SS.empty
-    in
-    let appear_once_l = get_ones l_counter in
-    let appear_once_r = get_ones r_counter in
-    let appear_once_output = get_ones output_counter in
-    let batch_dims =
-      SS.(
-        inter (inter appear_once_l appear_once_r) appear_once_output |> to_list)
-    in
-
-    let used_axes_counter = Counter.make (batch_dims @ contracted) in
-    let left_axes_remaining = Counter.diff l_counter used_axes_counter in
-    let right_axes_remaining = Counter.diff r_counter used_axes_counter in
-
-    let left_input =
-      Counter.to_list left_axes_remaining
-      |> List.map (fun (k, v) -> replicate v k)
-      |> List.flatten
-    in
-
-    let right_input =
-      Counter.to_list right_axes_remaining
-      |> List.map (fun (k, v) -> replicate v k)
-      |> List.flatten
-    in
-
-    (* Fmt.pr "Batch dims: [%a]@." Fmt.(list string) batch_dims; *)
-    let pack =
-      ( { batch_dims; matrix = (left_input, contracted) },
-        { batch_dims; matrix = (contracted, right_input) } )
-    in
-
-    (* Preserve batch dimensions, preserve unique axes on both sides *)
-    let packed_matmul = (batch_dims, left_input, right_input) in
-
-    (* Fmt.( *)
-    (*   pr "@[left_input: [%a], right_input: [%a], contracted: [%a]@]@." *)
-    (*     (list string) left_input (list string) right_input (list string) *)
-    (*     contracted); *)
-    let view_l =
-      if input_l = batch_dims @ left_input @ contracted then None
-      else
-        Some (List.map (fun x -> [ x ]) batch_dims @ [ left_input; contracted ])
-    in
-    let view_r =
-      if input_r = batch_dims @ contracted @ right_input then None
-      else
-        Some (List.map (fun x -> [ x ]) batch_dims @ [ contracted; right_input ])
-    in
-
-    (* Fmt.pr "@[view_l: [%a]@]@." *)
-    (*   Fmt.(list ~sep:sp (brackets (list ~sep:comma string))) *)
-    (*   view_l; *)
-    (* Fmt.pr "@[view_r: [%a]@]@." *)
-    (*   Fmt.(list ~sep:sp (brackets (list ~sep:comma string))) *)
-    (*   view_r; *)
-    let n_batch_dims = List.length batch_dims in
-    let unpack_squeeze =
-      match (left_input, right_input) with
-      | [], [] -> [ n_batch_dims + 1; n_batch_dims ]
-      | l, [] -> [ n_batch_dims + List.length l ]
-      | [], _ -> [ n_batch_dims ]
-      | _, _ -> []
-    in
-
-    { pack; view_l; view_r; packed_matmul; unpack_squeeze }
-
-  let%expect_test "General_matmul" =
-    let fmt_axis ppf strs =
-      match strs with
-      | [] -> Fmt.pf ppf "1"
-      | [ a ] -> Fmt.string ppf a
-      | _ -> Fmt.(parens (list ~sep:sp string)) ppf strs
-    in
-    let fmt_pack ppf { batch_dims; matrix = l, r } =
-      match batch_dims with
-      | [] -> Fmt.(pf ppf "%a %a" fmt_axis l fmt_axis r)
-      | _ ->
-          Fmt.(
-            pf ppf "%a %a %a" (list ~sep:sp string) batch_dims fmt_axis l
-              fmt_axis r)
-    in
-    let fmt_matmul ppf (batch_dims, y, z) =
-      match batch_dims with
-      | [] -> Fmt.(pf ppf "@[%a %a@]" fmt_axis y fmt_axis z)
-      | _ ->
-          Fmt.(
-            pf ppf "@[%a %a %a@]" (list ~sep:sp string) batch_dims fmt_axis y
-              fmt_axis z)
-    in
-    let squeeze ppf i = Fmt.pf ppf "Squeeze %d" i in
-    let go input_l input_r output =
-      let { pack; view_l; view_r; packed_matmul; unpack_squeeze } =
-        make input_l input_r output
-      in
-      Fmt.pr "Pack:@.";
-      Fmt.(
-        pr "  @[View left  %a: %a -> %a@]@." (pp_view Numpy) view_l
-          (list ~sep:sp string) input_l fmt_pack (fst pack));
-      Fmt.(
-        pr "  @[View right %a: %a -> %a@]@." (pp_view Numpy) view_r
-          (list ~sep:sp string) input_r fmt_pack (snd pack));
-      Fmt.pr "Unpack:@.";
-      Fmt.(
-        pr "  @[%a: %a -> %a@]@."
-          (brackets (list ~sep:semi squeeze))
-          unpack_squeeze fmt_matmul packed_matmul (list ~sep:sp string) output)
-    in
-    go [ "a"; "b" ] [ "b"; "a" ] [ "a"; "a" ];
-    [%expect
-      {|
-      Pack:
-        View left  : a b -> a b
-        View right : b a -> b a
-      Unpack:
-        []: a a -> a a
-    |}];
-    go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
-    [%expect
-      {|
-      Pack:
-        View left  .reshape(Da, 1, Db): a b -> a 1 b
-        View right .reshape(Da, Db, 1): b a -> a b 1
-      Unpack:
-        [Squeeze 2; Squeeze 1]: a 1 1 -> a
-      |}];
-    go [ "a"; "b"; "c" ] [ "a"; "b"; "d" ] [ "a"; "c"; "d" ];
-    [%expect
-      {|
-      Pack:
-        View left  .reshape(Da, Dc, Db): a b c -> a c b
-        View right : a b d -> a b d
-      Unpack:
-        []: a c d -> a c d
-      |}];
-    go [ "a"; "b" ] [ "b"; "a" ] [];
-    [%expect
-      {|
-      Pack:
-        View left  .reshape(1, Da * Db): a b -> 1 (a b)
-        View right .reshape(Da * Db, 1): b a -> (a b) 1
-      Unpack:
-        [Squeeze 1; Squeeze 0]: 1 1 ->
-      |}]
 end
 
 module Explain : sig
@@ -1190,16 +969,13 @@ end = struct
   let pp_explain_binary_contraction backend ppf
       (single_contraction : Binary_contraction.t) =
     let l_tensor, r_tensor = (single_contraction.l, single_contraction.r) in
-    let general_matmul =
-      General_matmul.make l_tensor r_tensor single_contraction.result_type
-    in
     let l = Fmt.(list string ~sep:sp) in
     Fmt.(
-      pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (%a)@]" l
+      pf ppf "@[<2>contract@ @[%a@] (@[%a, %a@] -> @[%a@])@ (@[%a@])@]" l
         single_contraction.contracted l l_tensor l r_tensor l
         single_contraction.result_type
-        (General_matmul.pp_expr backend)
-        general_matmul)
+        (option (Binary_contraction.Ops.pp backend))
+        single_contraction.operations)
 
   let pp_explain_unary_contraction backend ppf
       (tensor, Unary_contraction.{ operations; contracted; preserved }) =
@@ -1226,14 +1002,16 @@ end = struct
     go rewrite [ (1, 2); (0, 1) ];
     [%expect
       {|
-      contract k (a j k, a i k -> a i j) ((x @ y.view(0, 2, 1)))
-      contract a i j (a i j, a i j -> ) ((x * y).sum())
+      contract k (a j k, a i k -> a i j) ()
+      contract a i j (a i j, a i j -> ) 
+        (torch.tensordot(x, y, [(0, 0), (2, 2), (1, 1)]))
       |}];
     go rewrite [ (0, 1); (0, 1) ];
     [%expect
       {|
-      contract j (a i j, a j k -> a i k) ((x @ y))
-      contract a i k (a i k, a i k -> ) ((x * y).sum())
+      contract j (a i j, a j k -> a i k) ()
+      contract a i k (a i k, a i k -> )
+        (torch.tensordot(x, y, [(0, 0), (2, 2), (1, 1)]))
       |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
     go rewrite [ (0, 1) ];
@@ -1287,7 +1065,7 @@ end = struct
     [%expect
       {|
       result = np.zeros((Ni))
-      # Loop over all free indices XXX what is this?
+      # Loop over all free indices
       for i in range(Ni):
           total = 0
           total += A[i, i]
@@ -1324,7 +1102,6 @@ end = struct
       for b in range(Nb):
           for i in range(Ni):
               for j in range(Nj):
-                  # Loop over all summation indices
                   total = 0
                   total += A[b, i] * B[b, j]
                   result[b, i, j] = total
