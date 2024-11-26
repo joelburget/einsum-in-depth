@@ -65,12 +65,12 @@ let draw_unary_contraction Unary_contraction.{ contracted; preserved; _ } =
   el
 
 let draw_binary_contraction l_tensor r_tensor
-    Binary_contraction.{ contracted; zipped; _ } =
+    Binary_contraction.{ contracted; aligned; _ } =
   let left_uncontracted : string list =
-    list_subtraction l_tensor (contracted @ zipped)
+    list_subtraction l_tensor (contracted @ aligned)
   in
   let right_uncontracted : string list =
-    list_subtraction r_tensor (contracted @ zipped)
+    list_subtraction r_tensor (contracted @ aligned)
   in
 
   let tensor_nodes =
@@ -102,7 +102,7 @@ let draw_binary_contraction l_tensor r_tensor
              })
   in
   let zipped_nodes =
-    zipped |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+    aligned |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
   in
 
   let l_uncontracted_edges =
@@ -128,7 +128,7 @@ let draw_binary_contraction l_tensor r_tensor
              })
   in
   let zipped_edges =
-    zipped
+    aligned
     |> List.map (fun name ->
            Edge.
              [
@@ -178,7 +178,7 @@ let draw_binary_contraction l_tensor r_tensor
   let opts =
     Cytoscape.opts ~container:el ~elements
       ~fixed:[| ("left", 200, 300); ("right", 400, 300) |]
-      ~zipped ()
+      ~zipped:aligned ()
   in
   let _ : Cytoscape.t = Cytoscape.create ~opts () in
 

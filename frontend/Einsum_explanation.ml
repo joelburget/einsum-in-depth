@@ -221,9 +221,6 @@ let explain container contraction_str path_str =
               let result_type =
                 contraction.Einops.Binary_contraction.result_type
               in
-              let general_matmul =
-                Einops.General_matmul.make l_tensor r_tensor result_type
-              in
               div
                 [
                   span
@@ -247,16 +244,6 @@ let explain container contraction_str path_str =
                           str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp)
                             l_tensor (list string ~sep:sp) r_tensor
                             (list string ~sep:sp) result_type);
-                    ];
-                  span
-                    [ txt' (Fmt.str ") (in %s this would be " framework_name) ];
-                  code
-                    [
-                      txt'
-                        Fmt.(
-                          str "%a"
-                            (Einops.General_matmul.pp_expr code_preference)
-                            general_matmul);
                     ];
                   span [ txt' ")." ];
                   Tensor_diagram.draw_binary_contraction l_tensor r_tensor
