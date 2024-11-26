@@ -12,6 +12,7 @@ module Counter : sig
   val diff : t -> t -> t
   val get : t -> string -> int
   val key_set : t -> SS.t
+  val to_list : t -> (string * int) list
 end = struct
   type t = int SM.t
 
@@ -20,6 +21,7 @@ end = struct
 
   let make = List.fold_left add_to_count SM.empty
   let key_set m = SM.to_seq m |> Seq.map fst |> SS.of_seq
+  let to_list m = SM.bindings m
 
   let diff a b =
     let keys = SS.(union (key_set a) (key_set b) |> to_list) in
@@ -210,6 +212,40 @@ end
 
 open Remove_indices_impl
 
+module Convert_labels_to_indices : sig
+  val convert_labels_to_indices :
+    string list -> string list list -> int list list
+  (** Convert a list of lists of labels to a list of lists of indices. *)
+end = struct
+  let replace_at_index lst i x =
+    List.mapi (fun j y -> if i = j then x else y) lst
+
+  let convert_labels_to_indices input ordered_names =
+    let input_copy = ref input in
+    let extract_first str =
+      let pos = List.find_index (fun str' -> str = str') !input_copy in
+      match pos with
+      | None -> failwith "Not found"
+      | Some pos ->
+          input_copy := replace_at_index !input_copy pos "";
+          pos
+    in
+    ordered_names
+    |> List.map (fun lst -> List.map (fun label -> extract_first label) lst)
+
+  let%expect_test "convert_labels_to_indices" =
+    let go input ordered_names =
+      convert_labels_to_indices input ordered_names
+      |> Fmt.pr "@[%a@]@."
+           Fmt.(brackets (list ~sep:comma (brackets (list ~sep:comma int))))
+    in
+
+    go [ "a"; "b"; "c"; "d" ] [ [ "b"; "a" ]; [ "c"; "d" ] ];
+    [%expect {| [[1, 0], [2, 3]] |}]
+end
+
+open Convert_labels_to_indices
+
 module Minimum_swaps_impl : sig
   val minimum_swaps : 'a. 'a list -> 'a list -> (int * int) list
 end = struct
@@ -321,10 +357,8 @@ module Binary_contraction : sig
     l : string list;
     r : string list;
     operations : Op.t list;  (** Operations to perform in order *)
+    aligned : string list;
     contracted : string list;
-    zipped : string list;
-        (** These indices are not contracted -- just aligned *)
-    batch : string list;
     result_type : string list;
   }
 
@@ -334,13 +368,13 @@ module Binary_contraction : sig
     string list ->
     string list ->
     other_tensors:string list list ->
-    result_type:string list ->
+    target:string list ->
     t
   (** Construct a binary contraction.
 
       @param contracted_tensors The two tensors to be contracted.
       @param other_tensors This is used to tell which dimensions will / won't be used later so we can preserve / contract them.
-      @param result_type The type of tensor which should be left.
+      @param target The eventual target tensor (after other contractions if other_tensors is not empty)
    *)
 end = struct
   module Op = struct
@@ -396,22 +430,21 @@ end = struct
     l : string list;
     r : string list;
     operations : Op.t list;
+    aligned : string list;
     contracted : string list;
-    zipped : string list;
-    batch : string list;
     result_type : string list;
   }
 
   let debug_op_pp = Op.pp Numpy Fmt.string "x" Fmt.string "y"
 
-  let pp ppf { l; r; operations; contracted; zipped; batch; result_type } =
+  let pp ppf { l; r; operations; aligned; contracted; result_type } =
     let lst = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf
-      "@[l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], contracted: @[[%a]@], \
-       zipped: @[[%a]@], batch: @[[%a]@], result_type: @[[%a]@]@]"
+      "@[l: @[[%a]@], r: @[[%a]@], operations: @[[%a]@], aligned: @[[%a]@], \
+       contracted: @[[%a]@], result_type: @[[%a]@]@]"
       lst l lst r
       Fmt.(list ~sep:comma debug_op_pp)
-      operations lst contracted lst zipped lst batch lst result_type
+      operations lst aligned lst contracted lst result_type
 
   (* Try matching two inputs and an output to a tensordot operation *)
   let match_tensordot x y z =
@@ -471,42 +504,31 @@ end = struct
                   | Some op -> [ op ]
                   | None -> [])))
 
-  let make l r ~other_tensors ~result_type =
+  let make l r ~other_tensors ~target =
     let inter, union, diff = SS.(inter, union, diff) in
     let l_set, r_set = SS.(of_list l, of_list r) in
-    let contracted_tensors_labels, other_tensors_labels, eventual_result_labels
-        =
-      ( [ l; r ] |> List.flatten |> SS.of_list,
+    let input_tensor_labels, other_tensors_labels, target_labels =
+      ( SS.of_list (l @ r),
         other_tensors |> List.flatten |> SS.of_list,
-        SS.of_list result_type )
+        SS.of_list target )
     in
+    let dimensions_seen_later = union target_labels other_tensors_labels in
     (* Contract dimensions which aren't needed later *)
-    let contracted_labels =
-      diff
-        (union contracted_tensors_labels other_tensors_labels)
-        (union eventual_result_labels other_tensors_labels)
+    let contracted =
+      diff input_tensor_labels dimensions_seen_later
+      |> SS.elements |> List.sort compare
     in
-    let contracted = SS.elements contracted_labels in
-    (* Preserve dimensions which are needed later *)
-    let preserved =
-      inter contracted_tensors_labels
-        (union eventual_result_labels other_tensors_labels)
+    let aligned = inter l_set r_set |> SS.elements |> List.sort compare in
+    let result_type =
+      inter input_tensor_labels dimensions_seen_later
+      |> SS.elements |> List.sort compare
     in
-    (* Maintain the order of dimensions in the result if possible so op can be Id. *)
-    let preserved =
-      if preserved = eventual_result_labels then result_type
-      else SS.elements preserved
-    in
-    (* An axis is a batch axis if it's in one of the inputs, zipped if in both *)
-    let zipped, batch =
-      List.partition (fun x -> SS.mem x l_set && SS.mem x r_set) preserved
-    in
-    let operations = match_ops l r preserved in
-    { l; r; operations; contracted; zipped; batch; result_type }
+    let operations = match_ops l r result_type in
+    { l; r; operations; contracted; aligned; result_type }
 
   let%expect_test "operations" =
-    let go l r result_type =
-      let { operations; _ } = make l r ~other_tensors:[] ~result_type in
+    let go l r target =
+      let { operations; _ } = make l r ~other_tensors:[] ~target in
       Fmt.pr "%a\n" Fmt.(list ~sep:comma debug_op_pp) operations
     in
     go [ "i" ] [ "i" ] [];
@@ -523,36 +545,41 @@ end = struct
     [%expect {| np.tensordot(x, y, 0) |}]
 
   let%expect_test "make" =
-    let go l r other_tensors result_type =
-      make l r ~other_tensors ~result_type |> pp Fmt.stdout
+    let go l r other_tensors target =
+      make l r ~other_tensors ~target |> pp Fmt.stdout
     in
+    go [ "a"; "c" ] [ "c"; "d" ] [] [ "a"; "d" ];
+    [%expect
+      {|
+      l: [a; c], r: [c; d], operations: [np.matmul(x, y)], aligned: [c], contracted:
+      [c], result_type: [a; d]
+    |}];
     go [ "a"; "b" ] [ "c"; "d" ] [] [ "a"; "b"; "c"; "d" ];
     [%expect
       {| 
-      l: [a; b], r: [c; d], operations: [np.tensordot(x, y, 0)], contracted:
-      [], zipped: [], batch: [a; b; c; d], result_type: [a; b; c; d] 
-      |}];
+      l: [a; b], r: [c; d], operations: [np.tensordot(x, y, 0)], aligned: [], contracted:
+      [], result_type: [a; b; c; d] |}];
     go [ "i"; "i" ] [ "i" ] [] [ "i" ];
     [%expect
       {| 
-      l: [i; i], r: [i], operations: [x.diagonal(axis1=0, axis2=1), (x * y)], contracted: 
-      [], zipped: [i], batch: [], result_type: [i]
+      l: [i; i], r: [i], operations: [x.diagonal(axis1=0, axis2=1), (x * y)], aligned: 
+      [i], contracted: [], result_type: [i]
       |}];
     (* This could also be interpreted as `matmul; diag`, probably other ways *)
     go [ "a"; "a" ] [ "a"; "a" ] [] [ "a" ];
     [%expect
       {| 
       l: [a; a], r: [a; a], operations: [x.diagonal(axis1=0, axis2=1), 
-                                        y.diagonal(axis1=0, axis2=1), (x * y)], contracted:
-      [], zipped: [a], batch: [], result_type: [a]
+                                        y.diagonal(axis1=0, axis2=1), (x * y)], aligned:
+      [a], contracted: [], result_type: [a]
       |}];
     (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * v *)
     go [ "a"; "a"; "a" ] [ "a" ] [] [ "a" ];
     [%expect
       {| 
       l: [a; a; a], r: [a], operations: [x.diagonal(axis1=0, axis2=1), 
-                                        x.diagonal(axis1=0, axis2=1), (x * y)], contracted:
-      [], zipped: [a], batch: [], result_type: [a]
+                                        x.diagonal(axis1=0, axis2=1), (x * y)], aligned:
+      [a], contracted: [], result_type: [a]
       |}];
     (* m3.diagonal(0, 0, 1).diagonal(0, 0, 1) * m.diagonal() *)
     go [ "a"; "a"; "a" ] [ "a"; "a" ] [] [];
@@ -561,36 +588,36 @@ end = struct
       l: [a; a; a], r: [a; a], operations: [x.diagonal(axis1=0, axis2=1),
                                            x.diagonal(axis1=0, axis2=1),
                                            y.diagonal(axis1=0, axis2=1),
-                                           np.inner(x, y)], contracted: [a], zipped:
-      [], batch: [], result_type: []
+                                           np.inner(x, y)], aligned: [a], contracted:
+      [a], result_type: []
       |}];
     go [ "a"; "j"; "k" ] [ "a"; "j"; "k" ] [] [];
     [%expect
       {|
       l: [a; j; k], r: [a; j; k], operations: [np.tensordot(x, y, [(0, 0), 
-                                                             (2, 2), (1, 1)])], contracted:
-      [a; j; k], zipped: [], batch: [], result_type: [] |}];
+                                                             (2, 2), (1, 1)])], aligned:
+      [a; j; k], contracted: [a; j; k], result_type: [] |}];
     go [ "a"; "j"; "k" ] [ "a"; "i"; "j" ] [ [ "a"; "i"; "k" ] ] [];
     [%expect
-      {| 
-      l: [a; j; k], r: [a; i; j], operations: [], contracted: [j], zipped:
-      [a], batch: [i; k], result_type: [] 
+      {|
+      l: [a; j; k], r: [a; i; j], operations: [], aligned: [a; j], contracted:
+      [j], result_type: [a; i; k]
       |}];
     go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "i"; "n"; "j"; "l" ];
     [%expect
-      {| 
-      l: [n; l; k], r: [i; j; k], operations: [], contracted: [k], zipped:
-      [], batch: [i; j; l; n], result_type: [i; n; j; l] 
+      {|
+      l: [n; l; k], r: [i; j; k], operations: [], aligned: [k], contracted:
+      [k], result_type: [i; j; l; n] 
       |}];
     go [ "n"; "l"; "k" ] [ "i"; "j"; "k" ]
       [ [ "i"; "l"; "m" ]; [ "n"; "j"; "m" ]; [ "a"; "b"; "c" ] ]
       [ "n"; "l"; "i"; "j" ];
     [%expect
-      {| 
-      l: [n; l; k], r: [i; j; k], operations: [np.tensordot(x, y, [(2, 2)])], contracted:
-      [k], zipped: [], batch: [n; l; i; j], result_type: [n; l; i; j]
+      {|
+      l: [n; l; k], r: [i; j; k], operations: [], aligned: [k], contracted:
+      [k], result_type: [i; j; l; n]
       |}]
 end
 
@@ -919,9 +946,9 @@ module General_matmul : sig
 
   type t = {
     pack : packed * packed;  (** First pack both arguments to the matmul. *)
-    view_l : string list list;
+    view_l : int list list option;
         (** Instructions for packing the left tensor. Batch dimensions followed by matrix dimensions. *)
-    view_r : string list list;  (** See [view_l] *)
+    view_r : int list list option;  (** See [view_l] *)
     packed_matmul : string list * string list * string list;
         (** Output of matmul before unpacking. Batch dimensions, followed by both matrix dimensions. *)
     unpack_squeeze : int list;  (** List of dimensions to squeeze. *)
@@ -934,8 +961,8 @@ end = struct
 
   type t = {
     pack : packed * packed;
-    view_l : string list list;
-    view_r : string list list;
+    view_l : int list list option;
+    view_r : int list list option;
     packed_matmul : string list * string list * string list;
     unpack_squeeze : int list;
   }
@@ -945,15 +972,19 @@ end = struct
   let shape_slot ppf strs =
     match strs with
     | [] -> Fmt.pf ppf "1"
-    | _ -> Fmt.(list ~sep:(any " * ") string) ppf strs
+    | _ -> Fmt.(list ~sep:(any " * ") int) ppf strs
 
-  let shape = Fmt.(parens (list ~sep:comma shape_slot))
+  let pp_shape = Fmt.(parens (list ~sep:comma shape_slot))
+  let view_fn = function Numpy -> "reshape" | Pytorch -> "view"
+
+  let pp_view backend ppf = function
+    | None -> ()
+    | Some shape -> Fmt.(pf ppf ".%s%a" (view_fn backend) pp_shape shape)
 
   let pp_expr backend ppf { view_l; view_r; unpack_squeeze; _ } =
-    let view_fn = match backend with Numpy -> "reshape" | Pytorch -> "view" in
     Fmt.(
-      pf ppf "(@[<hov 2>x.%s%a@ %@@ y.%s%a@])%a" view_fn shape view_l view_fn
-        shape view_r (list squeeze) unpack_squeeze)
+      pf ppf "(@[<hov 2>x%a@ %@@ y%a@])%a" (pp_view backend) view_l
+        (pp_view backend) view_r (list squeeze) unpack_squeeze)
 
   let%expect_test "print squeeze" =
     Fmt.pr "@[%a@]@." (Fmt.list squeeze) [ 1; 2; 3 ];
@@ -970,22 +1001,6 @@ end = struct
     in
     let common_inputs = SS.inter input_l_s input_r_s in
 
-    (* Axes which appear only on the left so will appear in the left matrix *)
-    let left_only_input =
-      SS.diff input_l_s common_inputs
-      |> SS.elements
-      |> List.map (fun k -> replicate (SM.find k l_counter) k)
-      |> List.flatten
-    in
-
-    (* Axes which appear only on the right so will appear in the right matrix *)
-    let right_only_input =
-      SS.diff input_r_s common_inputs
-      |> SS.elements
-      |> List.map (fun k -> replicate (SM.find k r_counter) k)
-      |> List.flatten
-    in
-
     (* Contract (matmul) axes which appear on both inputs but not the output *)
     let contracted = SS.diff common_inputs output_s |> SS.elements in
 
@@ -1000,36 +1015,62 @@ end = struct
       SS.(
         inter (inter appear_once_l appear_once_r) appear_once_output |> to_list)
     in
-    Fmt.pr "Batch dims: [%a]@." Fmt.(list string) batch_dims;
 
+    let used_axes_counter = Counter.make (batch_dims @ contracted) in
+    let left_axes_remaining = Counter.diff l_counter used_axes_counter in
+    let right_axes_remaining = Counter.diff r_counter used_axes_counter in
+
+    let left_input =
+      Counter.to_list left_axes_remaining
+      |> List.map (fun (k, v) -> replicate v k)
+      |> List.flatten
+    in
+
+    let right_input =
+      Counter.to_list right_axes_remaining
+      |> List.map (fun (k, v) -> replicate v k)
+      |> List.flatten
+    in
+
+    (* Fmt.pr "Batch dims: [%a]@." Fmt.(list string) batch_dims; *)
     let pack =
-      ( { batch_dims; matrix = (left_only_input, contracted) },
-        { batch_dims; matrix = (contracted, right_only_input) } )
+      ( { batch_dims; matrix = (left_input, contracted) },
+        { batch_dims; matrix = (contracted, right_input) } )
     in
 
     (* Preserve batch dimensions, preserve unique axes on both sides *)
-    let packed_matmul = (batch_dims, left_only_input, right_only_input) in
+    let packed_matmul = (batch_dims, left_input, right_input) in
 
-    Fmt.(
-      pr "@[left_only_input: [%a], right_only_input: [%a], contracted: [%a]@]@."
-        (list string) left_only_input (list string) right_only_input
-        (list string) contracted);
+    (* Fmt.( *)
+    (*   pr "@[left_input: [%a], right_input: [%a], contracted: [%a]@]@." *)
+    (*     (list string) left_input (list string) right_input (list string) *)
+    (*     contracted); *)
     let view_l =
-      List.map (fun x -> [ x ]) batch_dims @ [ left_only_input; contracted ]
+      if input_l = batch_dims @ left_input @ contracted then None
+      else
+        let ordered_names =
+          List.map (fun x -> [ x ]) batch_dims @ [ left_input; contracted ]
+        in
+        Some (convert_labels_to_indices input_l ordered_names)
     in
     let view_r =
-      List.map (fun x -> [ x ]) batch_dims @ [ contracted; right_only_input ]
+      if input_r = batch_dims @ contracted @ right_input then None
+      else
+        let ordered_names =
+          List.map (fun x -> [ x ]) batch_dims @ [ contracted; right_input ]
+        in
+        Some (convert_labels_to_indices input_r ordered_names)
     in
-    Fmt.pr "@[view_l: [%a]@]@."
-      Fmt.(list ~sep:sp (brackets (list ~sep:comma string)))
-      view_l;
-    Fmt.pr "@[view_r: [%a]@]@."
-      Fmt.(list ~sep:sp (brackets (list ~sep:comma string)))
-      view_r;
 
+    (* Fmt.pr "@[view_l: [%a]@]@." *)
+    (*   Fmt.(list ~sep:sp (brackets (list ~sep:comma string))) *)
+    (*   view_l; *)
+    (* Fmt.pr "@[view_r: [%a]@]@." *)
+    (*   Fmt.(list ~sep:sp (brackets (list ~sep:comma string))) *)
+    (*   view_r; *)
     let n_batch_dims = List.length batch_dims in
     let unpack_squeeze =
-      match (left_only_input, right_only_input) with
+      match (left_input, right_input) with
       | [], [] -> [ n_batch_dims + 1; n_batch_dims ]
       | l, [] -> [ n_batch_dims + List.length l ]
       | [], _ -> [ n_batch_dims ]
@@ -1068,11 +1109,11 @@ end = struct
       in
       Fmt.pr "Pack:@.";
       Fmt.(
-        pr "  @[View %a: %a -> %a@]@." shape view_l (list ~sep:sp string)
-          input_l fmt_pack (fst pack));
+        pr "  @[View left  %a: %a -> %a@]@." (pp_view Numpy) view_l
+          (list ~sep:sp string) input_l fmt_pack (fst pack));
       Fmt.(
-        pr "  @[View %a: %a -> %a@]@." shape view_r (list ~sep:sp string)
-          input_r fmt_pack (snd pack));
+        pr "  @[View right %a: %a -> %a@]@." (pp_view Numpy) view_r
+          (list ~sep:sp string) input_r fmt_pack (snd pack));
       Fmt.pr "Unpack:@.";
       Fmt.(
         pr "  @[%a: %a -> %a@]@."
@@ -1083,40 +1124,38 @@ end = struct
     [%expect
       {|
       Pack:
-        View (a, b): a b -> a b
-        View (b, a): b a -> b a
+        View left  : a b -> a b
+        View right : b a -> b a
       Unpack:
         []: a a -> a a
-      |}]
-  (*
+    |}];
     go [ "a"; "b" ] [ "b"; "a" ] [ "a" ];
     [%expect
       {|
-              Pack:
-                View (a, 1, b): a b -> a 1 b
-                View (a, b, 1): b a -> a b 1
-              Unpack:
-                [Squeeze 2; Squeeze 1]: a 1 1 -> a
-            |}];
+      Pack:
+        View left  (a, 1, b): a b -> a 1 b
+        View right (a, b, 1): b a -> a b 1
+      Unpack:
+        [Squeeze 2; Squeeze 1]: a 1 1 -> a
+      |}];
     go [ "a"; "b"; "c" ] [ "a"; "b"; "d" ] [ "a"; "c"; "d" ];
     [%expect
       {|
-             Pack:
-               View (a, c, b): a b c -> a c b
-               View (a, b, d): a b d -> a b d
-             Unpack:
-               []: a c d -> a c d
-          |}];
+      Pack:
+        View left  .reshape(0, 2, 1): a b c -> a c b
+        View right : a b d -> a b d
+      Unpack:
+        []: a c d -> a c d
+      |}];
     go [ "a"; "b" ] [ "b"; "a" ] [];
     [%expect
       {|
-             Pack:
-               View (1, a * b): a b -> 1 (a b)
-               View (a * b, 1): b a -> (a b) 1
-             Unpack:
-               [Squeeze 1; Squeeze 0]: 1 1 ->
-          |}]
-    *)
+      Pack:
+        View left  (1, a * b): a b -> 1 (a b)
+        View right (a * b, 1): b a -> (a b) 1
+      Unpack:
+        [Squeeze 1; Squeeze 0]: 1 1 ->
+      |}]
 end
 
 module Explain : sig
@@ -1152,24 +1191,17 @@ end = struct
         path
         |> List.fold_left
              (fun (tensors, steps) (ixl, ixr) ->
-               let cl, cr = List.(nth bindings ixl, nth bindings ixr) in
-               let new_tensors =
+               let l, r = List.(nth tensors ixl, nth tensors ixr) in
+               let other_tensors =
                  List.fold_right Util.delete_from_list [ ixl; ixr ] tensors
                in
-               (* XXX two calls to Binary_contraction.make *)
                let single_contraction =
-                 Binary_contraction.make cl cr ~other_tensors:new_tensors
-                   ~result_type:result_group
+                 Binary_contraction.make l r ~other_tensors ~target:result_group
                in
-               let result_tensor =
-                 single_contraction.batch @ single_contraction.zipped
+               let new_tensors =
+                 single_contraction.result_type :: other_tensors
                in
-               let new_tensors = List.append new_tensors [ result_tensor ] in
-               let step =
-                 Binary_contraction.make cl cr ~other_tensors:new_tensors
-                   ~result_type:result_group
-               in
-               (new_tensors, List.append steps [ step ]))
+               (new_tensors, List.append steps [ single_contraction ]))
              (bindings, [])
       in
       Binary_contractions steps
@@ -1183,8 +1215,8 @@ end = struct
             (fun Binary_contraction.{ l; r; result_type; _ } ->
               Fmt.(
                 pr "@[l: [%a], r: [%a], result_type: [%a]@]@."
-                  (list ~sep:comma string) l (list ~sep:comma string) r
-                  (list ~sep:comma string) result_type))
+                  (list ~sep:semi string) l (list ~sep:semi string) r
+                  (list ~sep:semi string) result_type))
             steps
     in
     go [ [ "a"; "b" ]; [ "b"; "c" ]; [ "c"; "d" ] ] [ "a"; "d" ];
@@ -1221,10 +1253,10 @@ end = struct
     let go rewrite path =
       match get_contractions ~path rewrite with
       | Binary_contractions cs ->
-          Fmt.(pr "@[%a@]@." (list (pp_explain_binary_contraction Numpy)) cs)
+          Fmt.(pr "@[%a@]@." (list (pp_explain_binary_contraction Pytorch)) cs)
       | Unary_contraction (tensor, unary_contraction) ->
           Fmt.pr "@[%a@]@."
-            (pp_explain_unary_contraction Numpy)
+            (pp_explain_unary_contraction Pytorch)
             (tensor, unary_contraction)
     in
     let rewrite =
@@ -1233,22 +1265,18 @@ end = struct
     go rewrite [ (1, 2); (0, 1) ];
     [%expect
       {|
-            contract k (a j k, a i k -> a i j)
-              (torch.matmul(x, y.view(0, 2, 1)))
-            contract a i j (a i j, a i j -> )
-              ((x * y).sum())
-            |}];
+      contract k (a j k, a i k -> a i j) ((x @ y.view(0, 2, 1)))
+      contract a i j (a i j, a i j -> ) ((x * y).sum())
+      |}];
     go rewrite [ (0, 1); (0, 1) ];
     [%expect
       {|
-            contract j (a i j, a j k -> a i k)
-              (torch.matmul(x, y.view(0, 2, 1)))
-            contract a i k (a i k, a i k -> )
-              ((x * y).sum())
-            |}];
+      contract j (a i j, a j k -> a i k) ((x @ y))
+      contract a i k (a i k, a i k -> ) ((x * y).sum())
+      |}];
     let rewrite = ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]) in
     go rewrite [ (0, 1) ];
-    [%expect {| contract k (i k, k j -> i j) (torch.matmul(x, y.view(1, 0))) |}];
+    [%expect {| contract k (i k, k j -> i j) ((x @ y)) |}];
     let rewrite = ([ [ "i"; "i" ] ], []) in
     go rewrite [];
     [%expect {| contract i (i i -> ) (.trace()) |}]
@@ -1304,7 +1332,7 @@ end = struct
           total += A[i, i]
           result[i] = total
       return result
-    |}];
+      |}];
 
     go ([ [ "i"; "i" ] ], []);
     [%expect
