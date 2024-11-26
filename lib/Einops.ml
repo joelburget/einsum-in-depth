@@ -212,40 +212,6 @@ end
 
 open Remove_indices_impl
 
-module Convert_labels_to_indices : sig
-  val convert_labels_to_indices :
-    string list -> string list list -> int list list
-  (** Convert a list of lists of labels to a list of lists of indices. *)
-end = struct
-  let replace_at_index lst i x =
-    List.mapi (fun j y -> if i = j then x else y) lst
-
-  let convert_labels_to_indices input ordered_names =
-    let input_copy = ref input in
-    let extract_first str =
-      let pos = List.find_index (fun str' -> str = str') !input_copy in
-      match pos with
-      | None -> failwith "Not found"
-      | Some pos ->
-          input_copy := replace_at_index !input_copy pos "";
-          pos
-    in
-    ordered_names
-    |> List.map (fun lst -> List.map (fun label -> extract_first label) lst)
-
-  let%expect_test "convert_labels_to_indices" =
-    let go input ordered_names =
-      convert_labels_to_indices input ordered_names
-      |> Fmt.pr "@[%a@]@."
-           Fmt.(brackets (list ~sep:comma (brackets (list ~sep:comma int))))
-    in
-
-    go [ "a"; "b"; "c"; "d" ] [ [ "b"; "a" ]; [ "c"; "d" ] ];
-    [%expect {| [[1, 0], [2, 3]] |}]
-end
-
-open Convert_labels_to_indices
-
 module Minimum_swaps_impl : sig
   val minimum_swaps : 'a. 'a list -> 'a list -> (int * int) list
 end = struct
@@ -946,9 +912,9 @@ module General_matmul : sig
 
   type t = {
     pack : packed * packed;  (** First pack both arguments to the matmul. *)
-    view_l : int list list option;
+    view_l : string list list option;
         (** Instructions for packing the left tensor. Batch dimensions followed by matrix dimensions. *)
-    view_r : int list list option;  (** See [view_l] *)
+    view_r : string list list option;  (** See [view_l] *)
     packed_matmul : string list * string list * string list;
         (** Output of matmul before unpacking. Batch dimensions, followed by both matrix dimensions. *)
     unpack_squeeze : int list;  (** List of dimensions to squeeze. *)
@@ -961,24 +927,25 @@ end = struct
 
   type t = {
     pack : packed * packed;
-    view_l : int list list option;
-    view_r : int list list option;
+    view_l : string list list option;
+    view_r : string list list option;
     packed_matmul : string list * string list * string list;
     unpack_squeeze : int list;
   }
 
   let squeeze ppf i = Fmt.pf ppf ".squeeze(%d)" i
+  let pp_d_string ppf str = Fmt.pf ppf "D%s" str
 
   let shape_slot ppf strs =
     match strs with
     | [] -> Fmt.pf ppf "1"
-    | _ -> Fmt.(list ~sep:(any " * ") int) ppf strs
+    | _ -> Fmt.(list ~sep:(any " * ") pp_d_string) ppf strs
 
   let pp_shape = Fmt.(parens (list ~sep:comma shape_slot))
   let view_fn = function Numpy -> "reshape" | Pytorch -> "view"
 
   let pp_view backend ppf = function
-    | None -> ()
+    | None -> Fmt.pf ppf ""
     | Some shape -> Fmt.(pf ppf ".%s%a" (view_fn backend) pp_shape shape)
 
   let pp_expr backend ppf { view_l; view_r; unpack_squeeze; _ } =
@@ -1048,18 +1015,12 @@ end = struct
     let view_l =
       if input_l = batch_dims @ left_input @ contracted then None
       else
-        let ordered_names =
-          List.map (fun x -> [ x ]) batch_dims @ [ left_input; contracted ]
-        in
-        Some (convert_labels_to_indices input_l ordered_names)
+        Some (List.map (fun x -> [ x ]) batch_dims @ [ left_input; contracted ])
     in
     let view_r =
       if input_r = batch_dims @ contracted @ right_input then None
       else
-        let ordered_names =
-          List.map (fun x -> [ x ]) batch_dims @ [ contracted; right_input ]
-        in
-        Some (convert_labels_to_indices input_r ordered_names)
+        Some (List.map (fun x -> [ x ]) batch_dims @ [ contracted; right_input ])
     in
 
     (* Fmt.pr "@[view_l: [%a]@]@." *)
@@ -1133,8 +1094,8 @@ end = struct
     [%expect
       {|
       Pack:
-        View left  (a, 1, b): a b -> a 1 b
-        View right (a, b, 1): b a -> a b 1
+        View left  .reshape(Da, 1, Db): a b -> a 1 b
+        View right .reshape(Da, Db, 1): b a -> a b 1
       Unpack:
         [Squeeze 2; Squeeze 1]: a 1 1 -> a
       |}];
@@ -1142,7 +1103,7 @@ end = struct
     [%expect
       {|
       Pack:
-        View left  .reshape(0, 2, 1): a b c -> a c b
+        View left  .reshape(Da, Dc, Db): a b c -> a c b
         View right : a b d -> a b d
       Unpack:
         []: a c d -> a c d
@@ -1151,8 +1112,8 @@ end = struct
     [%expect
       {|
       Pack:
-        View left  (1, a * b): a b -> 1 (a b)
-        View right (a * b, 1): b a -> (a b) 1
+        View left  .reshape(1, Da * Db): a b -> 1 (a b)
+        View right .reshape(Da * Db, 1): b a -> (a b) 1
       Unpack:
         [Squeeze 1; Squeeze 0]: 1 1 ->
       |}]
