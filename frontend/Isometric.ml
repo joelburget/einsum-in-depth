@@ -16,7 +16,7 @@ end = struct
   let side = Jstr.v "SIDE"
 end
 
-module Isometric_rectangle : sig
+module Rectangle : sig
   type t = Jv.t
 
   include Jv.CONV with type t := Jv.t
@@ -61,7 +61,7 @@ let copy_object obj =
   let global_object = Jv.get Jv.global "Object" in
   Jv.call global_object "assign" [| obj |]
 
-module Isometric_text : sig
+module Text : sig
   type t = Jv.t
 
   include Jv.CONV with type t := t
@@ -104,7 +104,7 @@ end = struct
   let create ?(opts = Jv.undefined) () = Jv.new' jobj [| opts |]
 end
 
-module Isometric_group : sig
+module Group : sig
   type t
 
   include Jv.CONV with type t := t
@@ -131,7 +131,7 @@ end = struct
     group
 end
 
-module Isometric_canvas : sig
+module Canvas : sig
   type t
 
   include Jv.CONV with type t := t
@@ -148,7 +148,7 @@ module Isometric_canvas : sig
     opts
 
   val create : ?opts:opts -> unit -> t
-  val add_child : t -> Isometric_rectangle.t -> unit
+  val add_child : t -> Rectangle.t -> unit
 end = struct
   type t = Jv.t
 
@@ -171,7 +171,7 @@ end = struct
   let add_child o child = ignore @@ Jv.call o "addChild" [| child |]
 end
 
-module Isometric_cube : sig
+module Cube : sig
   type t = Jv.t
   type labels = string * string * string
 
@@ -189,13 +189,11 @@ end = struct
       ]
       |> List.map (fun (side_name, plane_view) ->
              let face_opts =
-               let o =
-                 Isometric_rectangle.opts ~height:1. ~width:1. ~plane_view ()
-               in
+               let o = Rectangle.opts ~height:1. ~width:1. ~plane_view () in
                Jv.Int.set o side_name 1;
                o
              in
-             Isometric_rectangle.create ~opts:face_opts ())
+             Rectangle.create ~opts:face_opts ())
     in
     let texts =
       [ a; b; c ]
@@ -208,14 +206,12 @@ end = struct
                | _ -> assert false
              in
 
-             Isometric_text.create
-               ~opts:(Isometric_text.opts ~top ~left ~right label)
-               ())
+             Text.create ~opts:(Text.opts ~top ~left ~right label) ())
     in
-    Isometric_group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ texts)
+    Group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ texts)
 end
 
-module Isometric_tensor : sig
+module Tensor : sig
   type t = Jv.t
 
   val create : left:float -> string list -> t
@@ -226,44 +222,41 @@ end = struct
     | [ dim1 ] ->
         let children =
           [
-            Isometric_rectangle.create
+            Rectangle.create
               ~opts:
-                (Isometric_rectangle.opts ~height:1. ~width:0. ~top:0. ~right:0.
-                   ~left:0. ~plane_view:Plane_view.top ())
+                (Rectangle.opts ~height:1. ~width:0. ~top:0. ~right:0. ~left:0.
+                   ~plane_view:Plane_view.top ())
               ();
-            Isometric_text.create
-              ~opts:(Isometric_text.opts ~top:0.75 ~left:1.25 ~right:0.5 dim1)
+            Text.create
+              ~opts:(Text.opts ~top:0.75 ~left:1.25 ~right:0.5 dim1)
               ();
           ]
         in
-        Isometric_group.create ~left ~top:(left /. 2.) children
+        Group.create ~left ~top:(left /. 2.) children
     | [ dim1; dim2 ] ->
         let children =
           [
-            Isometric_rectangle.create
+            Rectangle.create
               ~opts:
-                (Isometric_rectangle.opts ~height:1. ~width:1. ~top:0. ~right:0.
-                   ~left:0. ~plane_view:Plane_view.top ())
+                (Rectangle.opts ~height:1. ~width:1. ~top:0. ~right:0. ~left:0.
+                   ~plane_view:Plane_view.top ())
               ();
-            Isometric_text.create
-              ~opts:(Isometric_text.opts ~top:0.75 ~left:1.25 ~right:0.5 dim1)
+            Text.create
+              ~opts:(Text.opts ~top:0.75 ~left:1.25 ~right:0.5 dim1)
               ();
-            Isometric_text.create
-              ~opts:(Isometric_text.opts ~top:0.75 ~left:0.5 ~right:1.25 dim2)
+            Text.create
+              ~opts:(Text.opts ~top:0.75 ~left:0.5 ~right:1.25 dim2)
               ();
           ]
         in
-        Isometric_group.create ~left ~top:(left /. 2.) children
-    | [ a; b; c ] -> Isometric_cube.create ~left ~labels:(a, b, c)
-    | [] ->
-        Isometric_text.create
-          ~opts:(Isometric_text.opts ~left ~top:(left /. 2.) "(scalar)")
-          ()
+        Group.create ~left ~top:(left /. 2.) children
+    | [ a; b; c ] -> Cube.create ~left ~labels:(a, b, c)
+    | [] -> Text.create ~opts:(Text.opts ~left ~top:(left /. 2.) "(scalar)") ()
     | invalid ->
         failwith (Fmt.str "Invalid tensor: %a" Fmt.(list string) invalid)
 end
 
-module Isometric_scene : sig
+module Scene : sig
   val render :
     ?scale:float -> ?height:int -> ?width:int -> string list list -> Brr.El.t
 end = struct
@@ -271,10 +264,10 @@ end = struct
       =
     let container = Brr.El.div [] in
     let canvas =
-      Isometric_canvas.create
+      Canvas.create
         ~opts:
-          (Isometric_canvas.opts ~container ~background_color:"#ccc" ?scale
-             ~height ~width ())
+          (Canvas.opts ~container ~background_color:"#ccc" ?scale ~height ~width
+             ())
         ()
     in
 
@@ -288,7 +281,6 @@ end = struct
     tensors
     |> List.iteri (fun i tensor ->
            let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
-           Isometric_canvas.add_child canvas
-             (Isometric_tensor.create ~left:left_pos tensor));
+           Canvas.add_child canvas (Tensor.create ~left:left_pos tensor));
     container
 end

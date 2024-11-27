@@ -211,8 +211,7 @@ let explain container contraction_str path_str =
                 span [ txt' ")" ];
                 Tensor_diagram.draw_unary_contraction contraction;
                 tensor_diagram_info;
-                Isometric.Isometric_scene.render ~scale:50.
-                  [ tensor; result_type ];
+                Isometric.Scene.render ~scale:50. [ tensor; result_type ];
               ];
           ]
       | Binary_contractions contractions ->
@@ -250,7 +249,7 @@ let explain container contraction_str path_str =
                   Tensor_diagram.draw_binary_contraction l_tensor r_tensor
                     contraction;
                   tensor_diagram_info;
-                  Isometric.Isometric_scene.render ~scale:50.
+                  Isometric.Scene.render ~scale:50.
                     [ l_tensor; r_tensor; result_type ];
                 ])
             contractions
