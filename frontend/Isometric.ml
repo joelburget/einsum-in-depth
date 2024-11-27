@@ -275,9 +275,6 @@ end = struct
     let segment_width = 3. in
     let array_midpoint = Float.of_int (n_tensors - 1) /. 2. in
 
-    Fmt.pr "Tensors: %a@."
-      Fmt.(brackets (list (brackets (list string))))
-      tensors;
     tensors
     |> List.iteri (fun i tensor ->
            let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
