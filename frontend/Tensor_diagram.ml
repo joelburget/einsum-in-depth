@@ -101,8 +101,9 @@ let draw_binary_contraction l_tensor r_tensor
                node_type = Edge;
              })
   in
+  let zipped = aligned |> List.filter (fun x -> not (List.mem x contracted)) in
   let zipped_nodes =
-    aligned |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+    zipped |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
   in
 
   let l_uncontracted_edges =
@@ -128,7 +129,7 @@ let draw_binary_contraction l_tensor r_tensor
              })
   in
   let zipped_edges =
-    aligned
+    zipped
     |> List.map (fun name ->
            Edge.
              [
@@ -178,7 +179,7 @@ let draw_binary_contraction l_tensor r_tensor
   let opts =
     Cytoscape.opts ~container:el ~elements
       ~fixed:[| ("left", 200, 300); ("right", 400, 300) |]
-      ~zipped:aligned ()
+      ~zipped ()
   in
   let _ : Cytoscape.t = Cytoscape.create ~opts () in
 
