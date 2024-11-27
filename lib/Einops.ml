@@ -701,6 +701,7 @@ module Unary_contraction : sig
     operations : Op.t list;
     contracted : string list;
     preserved : string list;
+    result_type : string list;
   }
 
   val make : contracted:string list -> result_type:string list -> t
@@ -735,11 +736,12 @@ end = struct
     operations : Op.t list;
     contracted : string list;
     preserved : string list;
+    result_type : string list;
   }
 
   let op_pp_numpy = Op.pp Numpy
 
-  let pp ppf { operations; contracted; preserved } =
+  let pp ppf { operations; contracted; preserved; result_type = _ } =
     let l = Fmt.(list string ~sep:semi) in
     Fmt.pf ppf "operations: @[[%a]@], contracted: @[[%a]@], preserved: @[[%a]@]"
       Fmt.(list ~sep:comma op_pp_numpy)
@@ -775,7 +777,7 @@ end = struct
       SS.(diff (of_list contracted) contracted_labels |> to_list)
     in
     let contracted = SS.elements contracted_labels in
-    { operations; contracted; preserved }
+    { operations; contracted; preserved; result_type }
 
   let%expect_test "make" =
     let go contracted result_type =
@@ -978,7 +980,9 @@ end = struct
         single_contraction.operations)
 
   let pp_explain_unary_contraction backend ppf
-      (tensor, Unary_contraction.{ operations; contracted; preserved }) =
+      ( tensor,
+        Unary_contraction.{ operations; contracted; preserved; result_type = _ }
+      ) =
     let l = Fmt.(list string ~sep:sp) in
     Fmt.(
       pf ppf "@[<2>contract@ %a (@[%a@] -> @[%a@])@ (%a)@]" l contracted l

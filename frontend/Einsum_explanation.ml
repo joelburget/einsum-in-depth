@@ -189,8 +189,9 @@ let explain container contraction_str path_str =
     in
     let steps =
       match contractions with
-      | Einops.Explain.Unary_contraction (_tensor, contraction) ->
-          let Einops.Unary_contraction.{ operations; contracted; _ } =
+      | Einops.Explain.Unary_contraction (tensor, contraction) ->
+          let Einops.Unary_contraction.
+                { operations; contracted; preserved = _; result_type } =
             contraction
           in
           [
@@ -210,16 +211,16 @@ let explain container contraction_str path_str =
                 span [ txt' ")" ];
                 Tensor_diagram.draw_unary_contraction contraction;
                 tensor_diagram_info;
+                Isometric.Isometric_scene.render ~scale:50.
+                  [ tensor; result_type ];
               ];
           ]
       | Binary_contractions contractions ->
           List.mapi
             (fun i contraction ->
-              let l_tensor, r_tensor =
-                Einops.Binary_contraction.(contraction.l, contraction.r)
-              in
-              let result_type =
-                contraction.Einops.Binary_contraction.result_type
+              let l_tensor, r_tensor, result_type =
+                Einops.Binary_contraction.
+                  (contraction.l, contraction.r, contraction.result_type)
               in
               div
                 [
@@ -249,6 +250,8 @@ let explain container contraction_str path_str =
                   Tensor_diagram.draw_binary_contraction l_tensor r_tensor
                     contraction;
                   tensor_diagram_info;
+                  Isometric.Isometric_scene.render ~scale:50.
+                    [ l_tensor; r_tensor; result_type ];
                 ])
             contractions
     in

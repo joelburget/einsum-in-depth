@@ -255,20 +255,21 @@ end = struct
         in
         Isometric_group.create ~left ~top:(left /. 2.) children
     | [ a; b; c ] -> Isometric_cube.create ~left ~labels:(a, b, c)
-    | _ -> failwith "Invalid tensor"
+    | [] ->
+        Isometric_text.create
+          ~opts:(Isometric_text.opts ~left ~top:(left /. 2.) "(scalar)")
+          ()
+    | invalid ->
+        failwith (Fmt.str "Invalid tensor: %a" Fmt.(list string) invalid)
 end
 
 module Isometric_scene : sig
   val render :
-    ?scale:float ->
-    ?height:int ->
-    ?width:int ->
-    container:Brr.El.t ->
-    string list list ->
-    unit
+    ?scale:float -> ?height:int -> ?width:int -> string list list -> Brr.El.t
 end = struct
-  let render ?scale ?(height = default_height) ?(width = default_width)
-      ~container tensors =
+  let render ?scale ?(height = default_height) ?(width = default_width) tensors
+      =
+    let container = Brr.El.div [] in
     let canvas =
       Isometric_canvas.create
         ~opts:
@@ -281,9 +282,13 @@ end = struct
     let segment_width = 3. in
     let array_midpoint = Float.of_int (n_tensors - 1) /. 2. in
 
+    Fmt.pr "Tensors: %a@."
+      Fmt.(brackets (list (brackets (list string))))
+      tensors;
     tensors
     |> List.iteri (fun i tensor ->
            let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
            Isometric_canvas.add_child canvas
-             (Isometric_tensor.create ~left:left_pos tensor))
+             (Isometric_tensor.create ~left:left_pos tensor));
+    container
 end
