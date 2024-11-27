@@ -260,13 +260,13 @@ module Scene : sig
   val render :
     ?scale:float -> ?height:int -> ?width:int -> string list list -> Brr.El.t
 end = struct
-  let render ?scale ?(height = default_height) ?(width = default_width) tensors
-      =
+  let render ?(scale = 50.) ?(height = default_height) ?(width = default_width)
+      tensors =
     let container = Brr.El.div [] in
     let canvas =
       Canvas.create
         ~opts:
-          (Canvas.opts ~container ~background_color:"#ccc" ?scale ~height ~width
+          (Canvas.opts ~container ~background_color:"#ccc" ~scale ~height ~width
              ())
         ()
     in

@@ -6,7 +6,7 @@ let render_tensor_type = Frontend_util.fmt_txt "%a" Tensor_type.pp
 let isometric () =
   let tensor_type = Tensor_type.[ Elem.Variable "a"; Elem.Concrete 1 ] in
 
-  (* let iso_scene = Isometric_scene.render ~scale:50. ~height:320 ~width:500 *)
+  (* let iso_scene = Isometric_scene.render ~height:320 ~width:500 *)
   (*   [ [ "a"; "b"; "c" ]; [ "d"; "e" ]; [ "f" ] ] in *)
   let content = El.[ div [ render_tensor_type tensor_type ] ] in
   El.set_children (Document.body G.document) content
