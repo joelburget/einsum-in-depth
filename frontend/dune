@@ -3,8 +3,9 @@
  (modes js)
  (modules
   Broadcast_explanation
-  Cytoscape
+  Colors
   Contraction_explanation
+  Cytoscape
   Einsum_explanation
   Frontend_util
   Isometric

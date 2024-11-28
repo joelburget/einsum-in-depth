@@ -23,19 +23,32 @@ end = struct
 end
 
 module Edge : sig
-  type t = { id : string; label : string; source : string; target : string }
+  type t = {
+    id : string;
+    color : string;
+    label : string;
+    source : string;
+    target : string;
+  }
 
   val to_jv : t -> Jv.t
 end = struct
-  type t = { id : string; label : string; source : string; target : string }
+  type t = {
+    id : string;
+    color : string;
+    label : string;
+    source : string;
+    target : string;
+  }
 
-  let to_jv { id; label; source; target } =
+  let to_jv { id; color; label; source; target } =
     Jv.obj
       [|
         ( "data",
           Jv.obj
             [|
               ("id", Jv.of_string id);
+              ("color", Jv.of_string color);
               ("label", Jv.of_string label);
               ("source", Jv.of_string source);
               ("target", Jv.of_string target);
@@ -221,7 +234,13 @@ end = struct
               Jv.obj
                 [|
                   ("selector", Jv.of_string "edge");
-                  ("style", Jv.obj [| ("label", Jv.of_string "data(label)") |]);
+                  ( "style",
+                    Jv.obj
+                      [|
+                        ("label", Jv.of_string "data(label)");
+                        ("line-color", Jv.of_string "data(color)");
+                        ("color", Jv.of_string "data(color)");
+                      |] );
                 |];
               Jv.obj
                 [|

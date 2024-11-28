@@ -87,10 +87,11 @@ end = struct
 
   type opts = Jv.t
 
-  let opts ?(font_size = 15.) ?(fill_color = "#666") ?(stroke_width = 0.) ?top
+  let opts ?(font_size = 18.) ?(fill_color = "#666") ?(stroke_width = 0.) ?top
       ?left ?right ?plane_view text =
     let o = Jv.obj [||] in
     Jv.Float.set o "fontSize" font_size;
+    Jv.Jstr.set o "fontWeight" (Jstr.v "500");
     Jv.Jstr.set o "fillColor" (Jstr.v fill_color);
     Jv.Float.set o "strokeWidth" stroke_width;
     Jv.Float.set_if_some o "top" top;
@@ -175,82 +176,119 @@ module Cube : sig
   type t = Jv.t
   type labels = string * string * string
 
-  val create : left:float -> labels:labels -> t
+  val create :
+    edge_attributes:Colors.edge_attributes -> left:float -> labels:labels -> t
 end = struct
   type t = Jv.t
   type labels = string * string * string
 
-  let create ~left:left_pos ~labels:(a, b, c) =
-    let faces =
-      [
-        ("top", Plane_view.top);
-        ("right", Plane_view.front);
-        ("left", Plane_view.side);
-      ]
-      |> List.map (fun (side_name, plane_view) ->
-             let face_opts =
-               let o = Rectangle.opts ~height:1. ~width:1. ~plane_view () in
-               Jv.Int.set o side_name 1;
-               o
-             in
-             Rectangle.create ~opts:face_opts ())
+  let create ~edge_attributes ~left:left_pos ~labels:(a, b, c) =
+    let get_length i =
+      let label = match i with 0 -> a | 1 -> b | 2 -> c | _ -> assert false in
+      (Hashtbl.find edge_attributes label).Colors.length
     in
-    let texts =
-      [ a; b; c ]
-      |> List.mapi (fun i label ->
-             let top, left, right =
+    let l_depth, r_depth, height = (get_length 0, get_length 1, get_length 2) in
+    Fmt.pr "l_depth: %f, r_depth: %f, height: %f@." l_depth r_depth height;
+    let faces =
+      [ Plane_view.top; Plane_view.front; Plane_view.side ]
+      |> List.mapi (fun i plane_view ->
+             let face_opts =
                match i with
-               | 0 -> (1.25, 0.65, 0.)
-               | 1 -> (1.75, 0.5, 1.15)
-               | 2 -> (1., 1.75, 0.5)
-               | _ -> assert false
+               | 0 ->
+                   Rectangle.opts ~height:l_depth ~width:r_depth ~top:height
+                     ~plane_view ()
+               | 1 ->
+                   Rectangle.opts ~height ~width:l_depth ~right:r_depth
+                     ~plane_view ()
+               | _ ->
+                   Rectangle.opts ~height ~width:r_depth ~left:l_depth
+                     ~plane_view ()
              in
 
-             Text.create ~opts:(Text.opts ~top ~left ~right label) ())
+             Rectangle.create ~opts:face_opts ())
     in
-    Group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ texts)
+    let labels =
+      [ a; b; c ]
+      |> List.mapi (fun i label ->
+             let Colors.{ color; length = _ } =
+               Hashtbl.find edge_attributes label
+             in
+             let top, left, right =
+               match i with
+               | 0 -> (* top left *) (height *. 1.25, l_depth *. 0.65, 0.)
+               | 1 ->
+                   (* top right *)
+                   (height *. 1.25, 0., r_depth *. 0.5)
+               | 2 -> (* left *) (height *. 0.5, l_depth *. 1.2, 0.)
+               | _ -> assert false
+             in
+             Text.create
+               ~opts:(Text.opts ~top ~left ~right ~fill_color:color label)
+               ())
+    in
+    Group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ labels)
 end
 
 module Tensor : sig
   type t = Jv.t
 
-  val create : left:float -> string list -> t
+  val create :
+    edge_attributes:Colors.edge_attributes -> left:float -> string list -> t
+
+  val is_valid : string list -> bool
 end = struct
   type t = Jv.t
 
-  let create ~left = function
+  let is_valid = function [ _ ] | [ _; _ ] | [ _; _; _ ] -> true | _ -> false
+
+  let create ~edge_attributes ~left = function
     | [ dim1 ] ->
+        let Colors.{ length = l_depth; color = fill_color } =
+          Hashtbl.(find edge_attributes dim1)
+        in
         let children =
           [
             Rectangle.create
               ~opts:
-                (Rectangle.opts ~height:1. ~width:0. ~top:0. ~right:0. ~left:0.
+                (Rectangle.opts ~height:l_depth ~width:0.
                    ~plane_view:Plane_view.top ())
               ();
             Text.create
-              ~opts:(Text.opts ~top:0.75 ~left:1.25 ~right:0.5 dim1)
+              ~opts:
+                (Text.opts ~left:(l_depth *. 0.5) ~right:(-1.4) ~fill_color dim1)
               ();
           ]
         in
         Group.create ~left ~top:(left /. 2.) children
     | [ dim1; dim2 ] ->
+        let Colors.(
+              ( { length = l_depth; color = color1 },
+                { length = r_depth; color = color2 } )) =
+          Hashtbl.(find edge_attributes dim1, find edge_attributes dim2)
+        in
+        Fmt.pr "l_depth: %f, r_depth: %f@." l_depth r_depth;
+        Fmt.pr "dim1: %s, dim2: %s@." dim1 dim2;
         let children =
           [
             Rectangle.create
               ~opts:
-                (Rectangle.opts ~height:1. ~width:1. ~top:0. ~right:0. ~left:0.
+                (Rectangle.opts ~height:l_depth ~width:r_depth
                    ~plane_view:Plane_view.top ())
               ();
             Text.create
-              ~opts:(Text.opts ~top:0.75 ~left:1.25 ~right:0.5 dim1)
+              ~opts:
+                (Text.opts ~left:(l_depth *. 0.5) ~right:(r_depth *. -0.5)
+                   ~fill_color:color1 dim1)
               ();
             Text.create
-              ~opts:(Text.opts ~top:0.75 ~left:0.5 ~right:1.25 dim2)
+              ~opts:
+                (Text.opts ~left:(l_depth *. -0.5) ~right:(r_depth *. 0.5)
+                   ~fill_color:color2 dim2)
               ();
           ]
         in
         Group.create ~left ~top:(left /. 2.) children
-    | [ a; b; c ] -> Cube.create ~left ~labels:(a, b, c)
+    | [ a; b; c ] -> Cube.create ~edge_attributes ~left ~labels:(a, b, c)
     | [] -> Text.create ~opts:(Text.opts ~left ~top:(left /. 2.) "(scalar)") ()
     | invalid ->
         failwith (Fmt.str "Invalid tensor: %a" Fmt.(list string) invalid)
@@ -258,10 +296,15 @@ end
 
 module Scene : sig
   val render :
-    ?scale:float -> ?height:int -> ?width:int -> string list list -> Brr.El.t
+    ?scale:float ->
+    ?height:int ->
+    ?width:int ->
+    edge_attributes:Colors.edge_attributes ->
+    string list list ->
+    Brr.El.t
 end = struct
-  let render ?(scale = 50.) ?(height = default_height) ?(width = default_width)
-      tensors =
+  let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
+      ~edge_attributes tensors =
     let container = Brr.El.div [] in
     let canvas =
       Canvas.create
@@ -272,12 +315,13 @@ end = struct
     in
 
     let n_tensors = List.length tensors in
-    let segment_width = 3. in
+    let segment_width = 20. in
     let array_midpoint = Float.of_int (n_tensors - 1) /. 2. in
 
     tensors
     |> List.iteri (fun i tensor ->
            let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
-           Canvas.add_child canvas (Tensor.create ~left:left_pos tensor));
+           Canvas.add_child canvas
+             (Tensor.create ~edge_attributes ~left:left_pos tensor));
     container
 end

@@ -150,6 +150,7 @@ let explain container contraction_str path_str =
   in
 
   let render_steps path rewrite code_preference =
+    let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
     let contractions = Einops.Explain.get_contractions ?path rewrite in
     let show_step_no =
       match contractions with
@@ -194,25 +195,42 @@ let explain container contraction_str path_str =
                 { operations; contracted; preserved = _; result_type } =
             contraction
           in
+          let contraction_children =
+            match contraction.contracted with
+            | [] -> []
+            | _ ->
+                [
+                  span [ txt' "Contract " ];
+                  code [ txt' Fmt.(str "%a" (list string ~sep:sp) contracted) ];
+                  span [ txt' Fmt.(str "(in %s this would be " framework_name) ];
+                  code
+                    [
+                      txt'
+                        Fmt.(
+                          str "%a"
+                            (Einops.Unary_contraction.pp_ops code_preference)
+                            operations);
+                    ];
+                  span [ txt' ")." ];
+                ]
+          in
+          let isometric_children =
+            if List.for_all Isometric.Tensor.is_valid [ tensor; result_type ]
+            then
+              [
+                Isometric.Scene.render ~edge_attributes [ tensor; result_type ];
+              ]
+            else []
+          in
           [
             div
-              [
-                span [ txt' "Contract " ];
-                code [ txt' Fmt.(str "%a" (list string ~sep:sp) contracted) ];
-                span [ txt' Fmt.(str "(in %s this would be " framework_name) ];
-                code
-                  [
-                    txt'
-                      Fmt.(
-                        str "%a"
-                          (Einops.Unary_contraction.pp_ops code_preference)
-                          operations);
-                  ];
-                span [ txt' ")" ];
-                Tensor_diagram.draw_unary_contraction contraction;
-                tensor_diagram_info;
-                Isometric.Scene.render [ tensor; result_type ];
-              ];
+              (contraction_children
+              @ [
+                  Tensor_diagram.draw_unary_contraction edge_attributes
+                    contraction;
+                  tensor_diagram_info;
+                ]
+              @ isometric_children);
           ]
       | Binary_contractions contractions ->
           List.mapi
@@ -221,36 +239,60 @@ let explain container contraction_str path_str =
                 Einops.Binary_contraction.
                   (contraction.l, contraction.r, contraction.result_type)
               in
-              div
+              let contraction_children =
+                match contraction.contracted with
+                | [] -> []
+                | _ ->
+                    [
+                      span [ txt' "Contract " ];
+                      code
+                        [
+                          txt'
+                            Fmt.(
+                              str "%a" (list string ~sep:sp)
+                                contraction.contracted);
+                        ];
+                      span [ txt' " (" ];
+                      code
+                        [
+                          txt'
+                            Fmt.(
+                              str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp)
+                                l_tensor (list string ~sep:sp) r_tensor
+                                (list string ~sep:sp) result_type);
+                        ];
+                      span [ txt' ")." ];
+                    ]
+              in
+              let isometric_children =
+                if
+                  List.for_all Isometric.Tensor.is_valid
+                    [ l_tensor; r_tensor; result_type ]
+                then
+                  [
+                    Isometric.Scene.render ~edge_attributes
+                      [ l_tensor; r_tensor; result_type ];
+                  ]
+                else []
+              in
+              let div_children =
                 [
-                  span
+                  h2
                     [
                       txt'
                         (if show_step_no then Fmt.str "Step %d: " (i + 1)
                          else "");
                     ];
-                  span [ txt' "Contract " ];
-                  code
-                    [
-                      txt'
-                        Fmt.(
-                          str "%a" (list string ~sep:sp) contraction.contracted);
-                    ];
-                  span [ txt' " (" ];
-                  code
-                    [
-                      txt'
-                        Fmt.(
-                          str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp)
-                            l_tensor (list string ~sep:sp) r_tensor
-                            (list string ~sep:sp) result_type);
-                    ];
-                  span [ txt' ")." ];
-                  Tensor_diagram.draw_binary_contraction l_tensor r_tensor
-                    contraction;
-                  tensor_diagram_info;
-                  Isometric.Scene.render [ l_tensor; r_tensor; result_type ];
-                ])
+                ]
+                @ contraction_children
+                @ [
+                    Tensor_diagram.draw_binary_contraction edge_attributes
+                      l_tensor r_tensor contraction;
+                    tensor_diagram_info;
+                  ]
+                @ isometric_children
+              in
+              div div_children)
             contractions
     in
     let pyloops = Einops.Explain.show_loops rewrite in
@@ -293,9 +335,9 @@ let explain container contraction_str path_str =
   let selector, selected_signal =
     select
       [
+        "a i j, a j k, a i k ->";
         "batch pos head_index d_model, head_index d_model d_head -> batch pos \
          head_index d_head";
-        "a i j, a j k, a i k ->";
         "inner product: i, i ->";
         "i j, i j ->";
         "matrix multiplication: i j, j k -> i k";
@@ -484,6 +526,30 @@ let explain container contraction_str path_str =
               path_err_elem;
             ];
           result_output;
+          div
+            [
+              h2 [ txt' "Other resources" ];
+              ul
+                [
+                  li
+                    [
+                      a
+                        "https://obilaniu6266h16.wordpress.com/2016/02/04/einstein-summation-in-numpy/"
+                        "Olexa Bilaniuk's Einstein Summation in Numpy";
+                    ];
+                  li
+                    [
+                      a "https://ajcr.net/Basic-guide-to-einsum/"
+                        "ajcr's A basic introduction to NumPy's einsum";
+                    ];
+                  li
+                    [
+                      a
+                        "https://stackoverflow.com/questions/72952005/how-is-numpy-einsum-implemented"
+                        "Stack Overflow: How is numpy.einsum implemented?";
+                    ];
+                ];
+            ];
           div ~at:(classes "min-h-32") [];
         ];
     ]
