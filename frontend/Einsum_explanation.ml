@@ -89,6 +89,91 @@ let list_variables = function
        @ [ txt' " and "; code [ txt' last ] ]
         : El.t list)
 
+module Make_formatter : sig
+  type t = Brr.El.t * Format.formatter
+
+  val make_formatter : unit -> t
+end = struct
+  type t = Brr.El.t * Format.formatter
+
+  let mk_reactive cons ?d ?at s =
+    let result = cons ?d ?at [] in
+    let () = Elr.def_children result s in
+    result
+
+  let make_formatter () =
+    let add_elem_e, (trigger_add_elem : El.t Note.E.send) = E.create () in
+
+    let do_add_elem =
+      add_elem_e |> E.map (fun elem elems -> elems @ [ elem ])
+    in
+    let top_level_elems = S.accum [] do_add_elem in
+    let stack : (string * El.t Queue.t) Stack.t = Stack.create () in
+    let add_at_current_level elem =
+      match Stack.top stack with
+      | _, q -> Queue.add elem q
+      | exception Stack.Empty -> trigger_add_elem elem
+    in
+    let add_text str = add_at_current_level (span [ txt' str ]) in
+    let add_spaces n =
+      match () with
+      | () when n > 0 -> add_text (String.make n ' ')
+      | () when n < 0 -> Printf.printf "add_spaces negative value (!): %d\n" n
+      | () -> ()
+    in
+    let out_fns : Format.formatter_out_functions =
+      {
+        out_string =
+          (fun str _start _char_count -> add_text str)
+          (* No need to do anything -- we update the element immediately on receiving
+             characters. *);
+        out_flush = (fun x -> x);
+        out_newline = (fun () -> add_at_current_level (El.br ()));
+        out_spaces = add_spaces;
+        out_indent = add_spaces;
+      }
+    in
+    let stag_fns : Format.formatter_stag_functions =
+      (* We open a new span for every range tag we encounter. All children until we
+         encounter the matching close tag will be nested under it (by enqueuing). *)
+      Format.
+        {
+          mark_open_stag =
+            (function
+            | Einops.Colored color ->
+                Stack.push (color, Queue.create ()) stack;
+                ""
+            | _ ->
+                Stdio.printf "RangeFormatter unknown stag\n";
+                "")
+            (* Closing a range; create the span holding all of the enqueued children. *);
+          mark_close_stag =
+            (fun _ ->
+              match Stack.pop stack with
+              | color, q ->
+                  q |> Queue.to_seq |> List.of_seq
+                  |> span
+                       ~at:
+                         [
+                           At.style (Jstr.v Fmt.(str "color: %a" string color));
+                         ]
+                  |> add_at_current_level;
+                  ""
+              | exception Stack.Empty -> "");
+          print_open_stag = (fun _ -> ());
+          print_close_stag = (fun _ -> ());
+        }
+    in
+    let fmt = Format.formatter_of_out_functions out_fns in
+    Format.pp_set_tags fmt true;
+    Format.pp_set_formatter_stag_functions fmt stag_fns;
+    let code = mk_reactive El.code top_level_elems in
+    let elem = div ~at:(classes "flex flex-row") [ El.pre [ code ] ] in
+    (elem, fmt)
+end
+
+open Make_formatter
+
 let radio :
       'a. desc:string -> selected:bool signal -> 'a -> ('a -> unit) -> El.t =
  fun ~desc ~selected value f ->
@@ -296,7 +381,13 @@ let explain container contraction_str path_str =
             contractions
     in
     let pyloops = Einops.Explain.show_loops rewrite in
-    let python_code = Fmt.to_to_string Einops.Pyloops.pp pyloops in
+    (* let python_code = Fmt.to_to_string Einops.Pyloops.pp pyloops in *)
+    let python_code, code_ppf = make_formatter () in
+    let get_color edge_name =
+      let { Colors.color; _ } = Hashtbl.find edge_attributes edge_name in
+      color
+    in
+    Fmt.pf code_ppf "%a" (Einops.Pyloops.pp get_color) pyloops;
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
     [
@@ -320,7 +411,7 @@ let explain container contraction_str path_str =
       code_preference_selector;
       code
         ~at:(classes "before:content-[''] after:content-['']")
-        [ El.pre [ txt' python_code ] ];
+        [ python_code ];
       p
         [
           txt'

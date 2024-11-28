@@ -824,6 +824,8 @@ end = struct
     [%expect {| .swapaxes(0, 2) |}]
 end
 
+type Format.stag += Colored of string
+
 module Pyloops = struct
   type t = {
     free_indices : SS.t;
@@ -834,17 +836,27 @@ module Pyloops = struct
 
   let mk_indent indent = String.make (indent * 4) ' '
 
-  let pp ppf { free_indices; summation_indices; lhs_tensors; rhs_tensor } =
+  let pp get_color ppf
+      { free_indices; summation_indices; lhs_tensors; rhs_tensor } =
     let free_indices = SS.elements free_indices in
     let summation_indices = SS.elements summation_indices in
+
+    let pp_var ppf var =
+      let color = get_color var in
+      Format.pp_open_stag ppf (Colored color);
+      Fmt.pf ppf "%s" var;
+      Format.pp_close_stag ppf ()
+    in
+
+    let pp_d_var ppf var = Fmt.pf ppf "d_%a" pp_var var in
 
     (* initialize result *)
     (match rhs_tensor with
     | [] -> ()
     | _ ->
         Fmt.pf ppf "result = np.zeros((@[%a@]))@."
-          Fmt.(list ~sep:comma string)
-          (List.map (fun index -> "N" ^ index) rhs_tensor));
+          Fmt.(list ~sep:comma pp_d_var)
+          rhs_tensor);
 
     (* loops *)
     (match free_indices with
@@ -853,7 +865,8 @@ module Pyloops = struct
     let outer_indent =
       List.fold_left
         (fun indent index ->
-          Fmt.pf ppf "%sfor %s in range(N%s):@." (mk_indent indent) index index;
+          Fmt.pf ppf "%sfor %a in range(%a):@." (mk_indent indent) pp_var index
+            pp_d_var index;
           indent + 1)
         0 free_indices
     in
@@ -866,7 +879,8 @@ module Pyloops = struct
     let inner_indent =
       List.fold_left
         (fun indent index ->
-          Fmt.pf ppf "%sfor %s in range(N%s):@." (mk_indent indent) index index;
+          Fmt.pf ppf "%sfor %a in range(%a):@." (mk_indent indent) pp_var index
+            pp_d_var index;
           indent + 1)
         outer_indent summation_indices
     in
@@ -874,7 +888,7 @@ module Pyloops = struct
     (* summation inside loop *)
     (* let indices = free_indices @ summation_indices in *)
     let pp_access ppf (tensor, indices) =
-      Fmt.pf ppf "%s[%a]" tensor Fmt.(list ~sep:comma string) indices
+      Fmt.pf ppf "%s[%a]" tensor Fmt.(list ~sep:comma pp_var) indices
     in
     (* Name tensors starting with A, then B, etc *)
     let accesses =
@@ -1036,41 +1050,41 @@ end = struct
 
   let%expect_test "show_loops" =
     let go (rewrite : Rewrite.t) =
-      show_loops rewrite |> Pyloops.pp Fmt.stdout
+      show_loops rewrite |> Pyloops.pp (fun _ -> "#000") Fmt.stdout
     in
 
     go ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]);
     [%expect
       {|
-      result = np.zeros((Ni, Nj))
+      result = np.zeros((d_i, d_j))
       # Loop over all free indices
-      for i in range(Ni):
-          for j in range(Nj):
+      for i in range(d_i):
+          for j in range(d_j):
               # Loop over all summation indices
               total = 0
-              for k in range(Nk):
+              for k in range(d_k):
                   total += A[i, k] * B[k, j]
               result[i, j] = total
       return result
-    |}];
+      |}];
 
     go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
     [%expect
       {|
       # Loop over all summation indices
       total = 0
-      for s in range(Ns):
-          for t in range(Nt):
+      for s in range(d_s):
+          for t in range(d_t):
               total += A[s] * B[s, t] * C[t]
       return total
-    |}];
+      |}];
 
     go ([ [ "i"; "i" ] ], [ "i" ]);
     [%expect
       {|
-      result = np.zeros((Ni))
+      result = np.zeros((d_i))
       # Loop over all free indices
-      for i in range(Ni):
+      for i in range(d_i):
           total = 0
           total += A[i, i]
           result[i] = total
@@ -1082,33 +1096,33 @@ end = struct
       {|
       # Loop over all summation indices
       total = 0
-      for i in range(Ni):
+      for i in range(d_i):
           total += A[i, i]
       return total
-    |}];
+      |}];
 
     go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
     [%expect
       {|
       # Loop over all summation indices
       total = 0
-      for s in range(Ns):
-          for t in range(Nt):
+      for s in range(d_s):
+          for t in range(d_t):
               total += A[s] * B[s, t] * C[t]
       return total
-    |}];
+      |}];
 
     go ([ [ "b"; "i" ]; [ "b"; "j" ] ], [ "b"; "i"; "j" ]);
     [%expect
       {|
-      result = np.zeros((Nb, Ni, Nj))
+      result = np.zeros((d_b, d_i, d_j))
       # Loop over all free indices
-      for b in range(Nb):
-          for i in range(Ni):
-              for j in range(Nj):
+      for b in range(d_b):
+          for i in range(d_i):
+              for j in range(d_j):
                   total = 0
                   total += A[b, i] * B[b, j]
                   result[b, i, j] = total
       return result
-    |}]
+      |}]
 end
