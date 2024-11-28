@@ -239,7 +239,9 @@ module Tensor : sig
 end = struct
   type t = Jv.t
 
-  let is_valid = function [ _ ] | [ _; _ ] | [ _; _; _ ] -> true | _ -> false
+  let is_valid = function
+    | [] | [ _ ] | [ _; _ ] | [ _; _; _ ] -> true
+    | _ -> false
 
   let create ~edge_attributes ~left = function
     | [ dim1 ] ->
