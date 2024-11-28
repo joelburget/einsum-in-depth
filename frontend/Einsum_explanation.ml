@@ -487,7 +487,8 @@ let explain container contraction_str path_str =
         ~at:
           (classes
              "max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4 \
-              dark:prose-invert prose prose-p:my-2")
+              dark:prose-invert prose prose-p:my-2 prose-pre:bg-gray-100 \
+              prose-pre:text-gray-900")
         [
           h1 ~at:(classes "font-normal") [ txt' "Einsum Explorer" ];
           p
