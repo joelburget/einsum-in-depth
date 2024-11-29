@@ -249,7 +249,7 @@ let explain container contraction_str path_str =
       info
         (div
            [
-             h2 [ txt' "Interpreting a Tensor Diagram" ];
+             h2 ~at:(classes "text-lg") [ txt' "Interpreting a Tensor Diagram" ];
              p
                [
                  txt'
