@@ -332,7 +332,7 @@ let explain container contraction_str path_str =
               Fmt.(
                 pf binary_tensor_ppf "@[@[%a, %a@] -> @[%a@]@]@?"
                   (list pp_var ~sep:sp) l_tensor (list pp_var ~sep:sp) r_tensor
-                  (list string ~sep:sp) result_type);
+                  (list pp_var ~sep:sp) result_type);
               let contraction_children =
                 match contraction.contracted with
                 | [] -> []
