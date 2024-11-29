@@ -56,7 +56,7 @@ let draw_unary_contraction edge_attributes
   in
   let opts =
     Cytoscape.opts ~container:el ~elements
-      ~fixed:[| ("tensor", 300, 300) |]
+      ~fixed:[| ("tensor", 250, 160) |]
       ~zipped:[] ()
   in
   let _ : Cytoscape.t = Cytoscape.create ~opts () in
@@ -192,7 +192,7 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   in
   let opts =
     Cytoscape.opts ~container:el ~elements
-      ~fixed:[| ("left", 200, 300); ("right", 400, 300) |]
+      ~fixed:[| ("left", 150, 160); ("right", 350, 160) |]
       ~zipped ()
   in
   let _ : Cytoscape.t = Cytoscape.create ~opts () in

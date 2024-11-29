@@ -194,8 +194,8 @@ end = struct
     relative_constraints |> Queue.to_seq |> Array.of_seq
 
   let opts ~container ~elements ~fixed ~zipped () =
-    Brr.El.set_inline_style (Jstr.v "height") (Jstr.v "400px") container;
-    Brr.El.set_inline_style (Jstr.v "width") (Jstr.v "800px") container;
+    Brr.El.set_inline_style (Jstr.v "height") (Jstr.v "320px") container;
+    Brr.El.set_inline_style (Jstr.v "width") (Jstr.v "500px") container;
     Brr.Console.log [ "elements"; Elements.to_jv elements ];
 
     Jv.obj
