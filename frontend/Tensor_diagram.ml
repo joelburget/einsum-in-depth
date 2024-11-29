@@ -159,18 +159,23 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
     |> List.flatten
   in
 
-  let contracted_edge =
-    let color =
-      match contracted with [ name ] -> get_color name | _ -> "#000"
-    in
-    Edge.
-      {
-        id = Fmt.str "%s-contracted" (String.concat "-" contracted);
-        color;
-        label = String.concat ", " contracted;
-        source = "left";
-        target = "right";
-      }
+  let contracted_edges =
+    match contracted with
+    | [] -> []
+    | _ ->
+        let color =
+          match contracted with [ name ] -> get_color name | _ -> "#000"
+        in
+        [
+          Edge.
+            {
+              id = Fmt.str "%s-contracted" (String.concat "-" contracted);
+              color;
+              label = String.concat ", " contracted;
+              source = "left";
+              target = "right";
+            };
+        ]
   in
 
   let elements =
@@ -183,7 +188,7 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
         edges =
           Array.of_list
             (l_uncontracted_edges @ r_uncontracted_edges @ zipped_edges
-           @ [ contracted_edge ]);
+           @ contracted_edges);
       }
   in
 
