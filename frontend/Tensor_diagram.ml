@@ -5,25 +5,28 @@ let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
 
 let draw_unary_contraction edge_attributes
     Unary_contraction.{ contracted; preserved; _ } =
+  let get_color name = (Hashtbl.find edge_attributes name).Colors.color in
   let dangling_nodes =
     preserved
-    |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+    |> List.map (fun x ->
+           Node.{ id = x; color = get_color x; label = x; node_type = Edge })
     |> Array.of_list
   in
   let nodes =
     Array.append
-      [| Node.{ id = "tensor"; label = ""; node_type = Tensor } |]
+      [|
+        Node.{ id = "tensor"; color = "#000"; label = ""; node_type = Tensor };
+      |]
       dangling_nodes
   in
 
   let edges1 =
     contracted
     |> List.map (fun name ->
-           let color = (Hashtbl.find edge_attributes name).Colors.color in
            Edge.
              {
                id = Fmt.str "contracted-%s" name;
-               color;
+               color = get_color name;
                label = name;
                source = "tensor";
                target = "tensor";
@@ -34,11 +37,10 @@ let draw_unary_contraction edge_attributes
   let edges2 =
     preserved
     |> List.map (fun name ->
-           let color = (Hashtbl.find edge_attributes name).color in
            Edge.
              {
                id = Fmt.str "contracted-%s" name;
-               color;
+               color = get_color name;
                label = "";
                source = "tensor";
                target = Fmt.str "preserved-%s" name;
@@ -70,11 +72,13 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
     list_subtraction r_tensor (contracted @ aligned)
   in
 
+  let get_color name = (Hashtbl.find edge_attributes name).Colors.color in
+
   let tensor_nodes =
     Node.
       [
-        { id = "left"; label = ""; node_type = Tensor };
-        { id = "right"; label = ""; node_type = Tensor };
+        { id = "left"; color = "#000"; label = ""; node_type = Tensor };
+        { id = "right"; color = "#000"; label = ""; node_type = Tensor };
       ]
   in
 
@@ -84,6 +88,7 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
            Node.
              {
                id = Fmt.str "left-uncontracted-%s" x;
+               color = get_color x;
                label = x;
                node_type = Edge;
              })
@@ -94,23 +99,25 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
            Node.
              {
                id = Fmt.str "right-uncontracted-%s" x;
+               color = get_color x;
                label = x;
                node_type = Edge;
              })
   in
   let zipped = aligned |> List.filter (fun x -> not (List.mem x contracted)) in
   let zipped_nodes =
-    zipped |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+    zipped
+    |> List.map (fun x ->
+           Node.{ id = x; color = get_color x; label = x; node_type = Edge })
   in
 
   let l_uncontracted_edges =
     left_uncontracted
     |> List.map (fun name ->
-           let color = (Hashtbl.find edge_attributes name).Colors.color in
            Edge.
              {
                id = Fmt.str "%s-left" name;
-               color;
+               color = get_color name;
                label = "";
                source = Fmt.str "left-uncontracted-%s" name;
                target = "left";
@@ -119,11 +126,10 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   let r_uncontracted_edges =
     right_uncontracted
     |> List.map (fun name ->
-           let color = (Hashtbl.find edge_attributes name).color in
            Edge.
              {
                id = Fmt.str "%s-right" name;
-               color;
+               color = get_color name;
                label = "";
                source = Fmt.str "right-uncontracted-%s" name;
                target = "right";
@@ -132,7 +138,7 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   let zipped_edges =
     zipped
     |> List.map (fun name ->
-           let color = (Hashtbl.find edge_attributes name).color in
+           let color = get_color name in
            Edge.
              [
                {
@@ -155,9 +161,7 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
 
   let contracted_edge =
     let color =
-      match contracted with
-      | [ name ] -> (Hashtbl.find edge_attributes name).color
-      | _ -> "#000000"
+      match contracted with [ name ] -> get_color name | _ -> "#000"
     in
     Edge.
       {

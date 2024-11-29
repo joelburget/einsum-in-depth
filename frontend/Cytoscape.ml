@@ -1,19 +1,32 @@
 module Node : sig
   type node_type = Edge | Tensor
-  type t = { id : string; label : string; node_type : node_type }
+
+  type t = {
+    id : string;
+    color : string;
+    label : string;
+    node_type : node_type;
+  }
 
   val to_jv : t -> Jv.t
 end = struct
   type node_type = Edge | Tensor
-  type t = { id : string; label : string; node_type : node_type }
 
-  let to_jv { id; label; node_type } =
+  type t = {
+    id : string;
+    color : string;
+    label : string;
+    node_type : node_type;
+  }
+
+  let to_jv { id; color; label; node_type } =
     Jv.obj
       [|
         ( "data",
           Jv.obj
             [|
               ("id", Jv.of_string id);
+              ("color", Jv.of_string color);
               ("label", Jv.of_string label);
               ( "type",
                 Jv.of_string
@@ -229,7 +242,12 @@ end = struct
               Jv.obj
                 [|
                   ("selector", Jv.of_string "node");
-                  ("style", Jv.obj [| ("label", Jv.of_string "data(label)") |]);
+                  ( "style",
+                    Jv.obj
+                      [|
+                        ("label", Jv.of_string "data(label)");
+                        ("color", Jv.of_string "data(color)");
+                      |] );
                 |];
               Jv.obj
                 [|

@@ -75,19 +75,18 @@ let rec unsnoc = function
       let init, last = unsnoc xs in
       (x :: init, last)
 
-let rec intersperse sep = function
-  | [] -> []
-  | [ x ] -> [ x ]
-  | x :: xs -> x :: x :: sep :: intersperse sep xs
+let mk_color_style color = At.style (Jstr.v Fmt.(str "color: %a" string color))
 
-let list_variables = function
+let list_variables get_color vars =
+  let mk_code x = code ~at:[ mk_color_style (get_color x) ] [ txt' x ] in
+  match vars with
   | [] -> []
-  | [ x ] -> [ code [ txt' x ] ]
+  | [ x ] -> [ mk_code x ]
+  | [ x; y ] -> [ mk_code x; txt' " and "; mk_code y ]
   | xs ->
       let init, last = unsnoc xs in
-      (intersperse (txt' ", ") (List.map (fun str -> code [ txt' str ]) init)
-       @ [ txt' " and "; code [ txt' last ] ]
-        : El.t list)
+      Einops.intersperse (fun () -> txt' ", ") (List.map mk_code init)
+      @ [ txt' ", and "; mk_code last ]
 
 module Make_formatter : sig
   type t = Brr.El.t * Format.formatter
@@ -152,11 +151,7 @@ end = struct
               match Stack.pop stack with
               | color, q ->
                   q |> Queue.to_seq |> List.of_seq
-                  |> span
-                       ~at:
-                         [
-                           At.style (Jstr.v Fmt.(str "color: %a" string color));
-                         ]
+                  |> span ~at:[ mk_color_style color ]
                   |> add_at_current_level;
                   ""
               | exception Stack.Empty -> "");
@@ -167,9 +162,7 @@ end = struct
     let fmt = Format.formatter_of_out_functions out_fns in
     Format.pp_set_tags fmt true;
     Format.pp_set_formatter_stag_functions fmt stag_fns;
-    let code = mk_reactive El.code top_level_elems in
-    let elem = div ~at:(classes "flex flex-row") [ El.pre [ code ] ] in
-    (elem, fmt)
+    (mk_reactive El.code top_level_elems, fmt)
 end
 
 open Make_formatter
@@ -236,6 +229,11 @@ let explain container contraction_str path_str =
 
   let render_steps path rewrite code_preference =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
+    let get_color edge_name =
+      let { Colors.color; _ } = Hashtbl.find edge_attributes edge_name in
+      color
+    in
+    let pp_var = Einops.pp_var get_color in
     let contractions = Einops.Explain.get_contractions ?path rewrite in
     let show_step_no =
       match contractions with
@@ -284,9 +282,11 @@ let explain container contraction_str path_str =
             match contraction.contracted with
             | [] -> []
             | _ ->
+                let contracted_list, code_ppf = make_formatter () in
+                Fmt.(pf code_ppf "%a@?" (list ~sep:sp pp_var) contracted);
                 [
                   span [ txt' "Contract " ];
-                  code [ txt' Fmt.(str "%a" (list string ~sep:sp) contracted) ];
+                  contracted_list;
                   span [ txt' Fmt.(str "(in %s this would be " framework_name) ];
                   code
                     [
@@ -324,28 +324,24 @@ let explain container contraction_str path_str =
                 Einops.Binary_contraction.
                   (contraction.l, contraction.r, contraction.result_type)
               in
+              let contracted_list, contract_ppf = make_formatter () in
+              Fmt.(
+                pf contract_ppf "@[%a@]@?" (list pp_var ~sep:sp)
+                  contraction.contracted);
+              let binary_tensor_code, binary_tensor_ppf = make_formatter () in
+              Fmt.(
+                pf binary_tensor_ppf "@[@[%a, %a@] -> @[%a@]@]@?"
+                  (list pp_var ~sep:sp) l_tensor (list pp_var ~sep:sp) r_tensor
+                  (list string ~sep:sp) result_type);
               let contraction_children =
                 match contraction.contracted with
                 | [] -> []
                 | _ ->
                     [
                       span [ txt' "Contract " ];
-                      code
-                        [
-                          txt'
-                            Fmt.(
-                              str "%a" (list string ~sep:sp)
-                                contraction.contracted);
-                        ];
+                      contracted_list;
                       span [ txt' " (" ];
-                      code
-                        [
-                          txt'
-                            Fmt.(
-                              str "@[%a, %a@] -> @[%a@]" (list string ~sep:sp)
-                                l_tensor (list string ~sep:sp) r_tensor
-                                (list string ~sep:sp) result_type);
-                        ];
+                      binary_tensor_code;
                       span [ txt' ")." ];
                     ]
               in
@@ -381,13 +377,8 @@ let explain container contraction_str path_str =
             contractions
     in
     let pyloops = Einops.Explain.show_loops rewrite in
-    (* let python_code = Fmt.to_to_string Einops.Pyloops.pp pyloops in *)
     let python_code, code_ppf = make_formatter () in
-    let get_color edge_name =
-      let { Colors.color; _ } = Hashtbl.find edge_attributes edge_name in
-      color
-    in
-    Fmt.pf code_ppf "%a" (Einops.Pyloops.pp get_color) pyloops;
+    Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp get_color) pyloops;
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
     [
@@ -396,9 +387,9 @@ let explain container contraction_str path_str =
           txt'
             "In outer loops, we iterate over all free indices to generate each \
              output element (";
-          span (list_variables free_indices);
+          span (list_variables get_color free_indices);
           txt' "), while in inner loops we iterate over all summation indices (";
-          span (list_variables summation_indices);
+          span (list_variables get_color summation_indices);
           txt' ") to sum over each product term.";
           txt'
             "First, here's equivalent, simplified (but slow, because it's not \
@@ -409,9 +400,15 @@ let explain container contraction_str path_str =
              building up the result.";
         ];
       (* code_preference_selector; *)
-      code
-        ~at:(classes "before:content-[''] after:content-['']")
-        [ python_code ];
+      div ~at:(classes "flex flex-row")
+        [
+          El.pre
+            [
+              code
+                ~at:(classes "before:content-[''] after:content-['']")
+                [ python_code ];
+            ];
+        ];
       p
         [
           txt'

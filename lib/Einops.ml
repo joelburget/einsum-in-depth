@@ -4,6 +4,23 @@ module SS = String_set
 module SM = String_map
 
 type code_backend = Numpy | Pytorch
+type Format.stag += Colored of string
+
+module PP_var_impl : sig
+  type get_color = string -> string
+
+  val pp_var : get_color -> string Fmt.t
+end = struct
+  type get_color = string -> string
+
+  let pp_var get_color ppf var =
+    let color = get_color var in
+    Format.pp_open_stag ppf (Colored color);
+    Fmt.pf ppf "%s" var;
+    Format.pp_close_stag ppf ()
+end
+
+include PP_var_impl
 
 module Counter : sig
   type t = int SM.t
@@ -824,8 +841,6 @@ end = struct
     [%expect {| .swapaxes(0, 2) |}]
 end
 
-type Format.stag += Colored of string
-
 module Pyloops = struct
   type t = {
     free_indices : SS.t;
@@ -840,13 +855,7 @@ module Pyloops = struct
       { free_indices; summation_indices; lhs_tensors; rhs_tensor } =
     let free_indices = SS.elements free_indices in
     let summation_indices = SS.elements summation_indices in
-
-    let pp_var ppf var =
-      let color = get_color var in
-      Format.pp_open_stag ppf (Colored color);
-      Fmt.pf ppf "%s" var;
-      Format.pp_close_stag ppf ()
-    in
+    let pp_var = pp_var get_color in
 
     let pp_d_var ppf var = Fmt.pf ppf "d_%a" pp_var var in
 
@@ -1126,3 +1135,24 @@ end = struct
       return result
       |}]
 end
+
+let rec intersperse mk_sep = function
+  | [] -> []
+  | [ x ] -> [ x ]
+  | x :: xs -> x :: mk_sep () :: intersperse mk_sep xs
+
+let%expect_test "intersperse" =
+  let go strs =
+    Fmt.(
+      pr "%a"
+        (brackets (list ~sep:comma string))
+        (intersperse (fun () -> "x") strs))
+  in
+  go [];
+  [%expect {| [] |}];
+  go [ "a" ];
+  [%expect {| [a] |}];
+  go [ "a"; "b" ];
+  [%expect {| [a, x, b] |}];
+  go [ "a"; "b"; "c" ];
+  [%expect {| [a, x, b, x, c] |}]
