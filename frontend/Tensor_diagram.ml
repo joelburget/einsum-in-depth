@@ -3,6 +3,9 @@ open Cytoscape
 
 let classes = Frontend_util.classes
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
+let contracted_color () = if Colors.prefers_dark () then "#fff" else "#000"
+let node_color () = if Colors.prefers_dark () then "#fff" else "#000"
+let bg_color () = if Colors.prefers_dark () then "#00000080" else "#fff"
 
 let draw_unary_contraction edge_attributes
     Unary_contraction.{ contracted; preserved; _ } =
@@ -16,7 +19,13 @@ let draw_unary_contraction edge_attributes
   let nodes =
     Array.append
       [|
-        Node.{ id = "tensor"; color = "#000"; label = ""; node_type = Tensor };
+        Node.
+          {
+            id = "tensor";
+            color = node_color ();
+            label = "";
+            node_type = Tensor;
+          };
       |]
       dangling_nodes
   in
@@ -53,7 +62,11 @@ let draw_unary_contraction edge_attributes
     Elements.{ nodes; edges = Array.append contracted_edges preserved_edges }
   in
   let el =
-    Brr.El.div ~at:Brr.At.[ style (Jstr.v "background-color: white;") ] []
+    Brr.El.div
+      ~at:
+        Brr.At.
+          [ style (Jstr.v (Fmt.str "background-color: %s;" (bg_color ()))) ]
+      []
   in
   let opts =
     Cytoscape.opts ~container:el ~elements
@@ -78,8 +91,8 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   let tensor_nodes =
     Node.
       [
-        { id = "left"; color = "#000"; label = ""; node_type = Tensor };
-        { id = "right"; color = "#000"; label = ""; node_type = Tensor };
+        { id = "left"; color = node_color (); label = ""; node_type = Tensor };
+        { id = "right"; color = node_color (); label = ""; node_type = Tensor };
       ]
   in
 
@@ -165,7 +178,9 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
     | [] -> []
     | _ ->
         let color =
-          match contracted with [ name ] -> get_color name | _ -> "#000"
+          match contracted with
+          | [ name ] -> get_color name
+          | _ -> contracted_color ()
         in
         [
           Edge.
@@ -196,7 +211,8 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   let el =
     Brr.El.div
       ~at:
-        (Brr.At.[ style (Jstr.v "background-color: white;") ]
+        (Brr.At.
+           [ style (Jstr.v (Fmt.str "background-color: %s;" (bg_color ()))) ]
         @ classes "mx-auto")
       []
   in

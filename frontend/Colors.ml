@@ -1,23 +1,40 @@
+type base_attributes = {
+  light_bg_color : string;
+  dark_bg_color : string;
+  length : float;
+}
+
 type attributes = { color : string; length : float }
 
+let prefers_dark () = Brr.Window.prefers_dark_color_scheme Brr.G.window
+
 (* colorhunt.co *)
-let edge_attributes =
+let base_edge_attributes =
   [|
-    { color = "#432E54"; length = 5. };
-    { color = "#8EA3A6"; length = 3. };
-    { color = "#AE445A"; length = 7. };
-    { color = "#4B4376"; length = 9. };
-    { color = "#E8BCB9"; length = 11. };
-    { color = "#E6E9AF"; length = 2. };
-    { color = "#FFCFEF"; length = 2. };
-    { color = "#0A97B0"; length = 2. };
-    { color = "#2A3335"; length = 2. };
-    { color = "#006A67"; length = 2. };
+    { light_bg_color = "#0A3981"; dark_bg_color = "#F6D6D6"; length = 5. };
+    { light_bg_color = "#AE445A"; dark_bg_color = "#F6F7C4"; length = 3. };
+    { light_bg_color = "#441752"; dark_bg_color = "#A1EEBD"; length = 7. };
+    { light_bg_color = "#4B4376"; dark_bg_color = "#7BD3EA"; length = 9. };
+    { light_bg_color = "#FA812F"; dark_bg_color = "#F7F9F2"; length = 11. };
+    { light_bg_color = "#FA4032"; dark_bg_color = "#E8C5E5"; length = 2. };
+    { light_bg_color = "#0B192C"; dark_bg_color = "#FFCFB3"; length = 2. };
+    { light_bg_color = "#295F98"; dark_bg_color = "#C5D3E8"; length = 2. };
+    { light_bg_color = "#2A3335"; dark_bg_color = "#A6AEBF"; length = 2. };
+    { light_bg_color = "#006A67"; dark_bg_color = "#E0E5B6"; length = 2. };
   |]
 
+let edge_attributes () : attributes array =
+  let f { dark_bg_color; light_bg_color; length } =
+    match prefers_dark () with
+    | true -> { color = dark_bg_color; length }
+    | false -> { color = light_bg_color; length }
+  in
+  Array.map f base_edge_attributes
+
 let get_edge_attributes i =
+  let edge_attributes = edge_attributes () in
   if i < Array.length edge_attributes then edge_attributes.(i)
-  else { color = "#000000"; length = 4. }
+  else { color = (if prefers_dark () then "#000" else "#fff"); length = 4. }
 
 type edge_attributes = (string, attributes) Hashtbl.t
 

@@ -1765,6 +1765,15 @@ video {
     --tw-text-opacity: 1;
     color: rgb(255 255 255 / var(--tw-text-opacity, 1));
   }
+
+  .prose-pre\:dark\:bg-\[\#00000080\] :is(:where(pre):not(:where([class~="not-prose"],[class~="not-prose"] *))) {
+    background-color: #00000080;
+  }
+
+  .prose-pre\:dark\:text-\[\#d1d5db\] :is(:where(pre):not(:where([class~="not-prose"],[class~="not-prose"] *))) {
+    --tw-text-opacity: 1;
+    color: rgb(209 213 219 / var(--tw-text-opacity, 1));
+  }
 }
 
 .\[\&\:not\(\[data-focus\]\2c \[data-checked\]\)\]\:ring-inset:not([data-focus],[data-checked]) {

@@ -326,11 +326,13 @@ end = struct
               ])
         []
     in
+    let background_color =
+      if Colors.prefers_dark () then "#00000080" else "#fff"
+    in
     let canvas =
       Canvas.create
         ~opts:
-          (Canvas.opts ~container ~background_color:"#fff" ~scale ~height ~width
-             ())
+          (Canvas.opts ~container ~background_color ~scale ~height ~width ())
         ()
     in
 

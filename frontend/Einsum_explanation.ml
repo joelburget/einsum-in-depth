@@ -344,7 +344,7 @@ let explain container contraction_str path_str =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
     let get_color edge_name =
       match Hashtbl.find_opt edge_attributes edge_name with
-      | None -> "#000"
+      | None -> if Colors.prefers_dark () then "#fff" else "#000"
       | Some { Colors.color; _ } -> color
     in
     let pp_var = Einops.pp_var get_color in
@@ -675,7 +675,8 @@ let explain container contraction_str path_str =
           (classes
              "max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4 \
               dark:prose-invert prose prose-p:my-2 prose-pre:bg-gray-100 \
-              prose-pre:text-gray-900")
+              prose-pre:dark:bg-[#00000080] prose-pre:text-gray-900 \
+              prose-pre:dark:text-[#d1d5db]")
         [
           h1 ~at:(classes "font-normal") [ txt' "Einsum Explorer" ];
           p
