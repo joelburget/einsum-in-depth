@@ -197,7 +197,7 @@ let radio :
 module Tabs : sig
   type tab = { name : string }
 
-  val make_tabs : tab list -> El.t signal * int signal
+  val make_tabs : ?default:int -> tab list -> El.t signal * int signal
 end = struct
   let chevron_down_icon () =
     let open Brr_svg in
@@ -226,8 +226,8 @@ end = struct
 
   type tab = { name : string }
 
-  let make_tabs tabs =
-    let current_tab_s, set_current_tab = S.create 0 in
+  let make_tabs ?(default = 0) tabs =
+    let current_tab_s, set_current_tab = S.create default in
     let select =
       El.select
         ~at:
@@ -391,8 +391,12 @@ let explain container contraction_str path_str =
                 { operations; contracted; preserved = _; result_type } =
             contraction
           in
+          let valid_isometric_tensors =
+            List.for_all Isometric.Tensor.is_valid [ tensor; result_type ]
+          in
           let tab_selector_s, current_tab_s =
             Tabs.make_tabs
+              ~default:(if valid_isometric_tensors then 1 else 0)
               [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
           in
           let diagram_s =
@@ -406,10 +410,7 @@ let explain container contraction_str path_str =
                          mk_tensor_diagram_info ();
                        ]
                    | _ ->
-                       if
-                         List.for_all Isometric.Tensor.is_valid
-                           [ tensor; result_type ]
-                       then
+                       if valid_isometric_tensors then
                          [
                            Isometric.Scene.render ~edge_attributes
                              [ tensor; result_type ];
@@ -486,32 +487,33 @@ let explain container contraction_str path_str =
                       span [ txt' ")." ];
                     ]
               in
+              let valid_isometric_tensors =
+                List.for_all Isometric.Tensor.is_valid
+                  [ l_tensor; r_tensor; result_type ]
+              in
               let tab_selector_s, current_tab_s =
                 Tabs.make_tabs
+                  ~default:(if valid_isometric_tensors then 1 else 0)
                   [
                     { name = "Tensor Diagram" }; { name = "Isometric Diagram" };
                   ]
               in
               let diagram_s =
                 current_tab_s
-                |> S.map (fun i ->
-                       match i with
-                       | 0 ->
+                |> S.map (function
+                     | 0 ->
+                         [
+                           Tensor_diagram.draw_binary_contraction
+                             edge_attributes l_tensor r_tensor contraction;
+                           mk_tensor_diagram_info ();
+                         ]
+                     | _ ->
+                         if valid_isometric_tensors then
                            [
-                             Tensor_diagram.draw_binary_contraction
-                               edge_attributes l_tensor r_tensor contraction;
-                             mk_tensor_diagram_info ();
+                             Isometric.Scene.render ~edge_attributes
+                               [ l_tensor; r_tensor; result_type ];
                            ]
-                       | _ ->
-                           if
-                             List.for_all Isometric.Tensor.is_valid
-                               [ l_tensor; r_tensor; result_type ]
-                           then
-                             [
-                               Isometric.Scene.render ~edge_attributes
-                                 [ l_tensor; r_tensor; result_type ];
-                             ]
-                           else [])
+                         else [])
               in
               let tab_selector_parent, diagram_parent = (div [], div []) in
               Elr.def_children tab_selector_parent

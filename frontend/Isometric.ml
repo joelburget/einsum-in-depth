@@ -1,6 +1,7 @@
 let classes = Frontend_util.classes
 let default_height = 320
 let default_width = 500
+let fill_color = "#ccc"
 let isometric = Jv.get Jv.global "isometric"
 
 module Plane_view : sig
@@ -178,12 +179,16 @@ module Cube : sig
   type labels = string * string * string
 
   val create :
-    edge_attributes:Colors.edge_attributes -> left:float -> labels:labels -> t
+    edge_attributes:Colors.edge_attributes ->
+    left:float ->
+    fill_color:string ->
+    labels:labels ->
+    t
 end = struct
   type t = Jv.t
   type labels = string * string * string
 
-  let create ~edge_attributes ~left:left_pos ~labels:(a, b, c) =
+  let create ~edge_attributes ~left:left_pos ~fill_color ~labels:(a, b, c) =
     let get_length i =
       let label = match i with 0 -> a | 1 -> b | 2 -> c | _ -> assert false in
       (Hashtbl.find edge_attributes label).Colors.length
@@ -197,13 +202,13 @@ end = struct
                match i with
                | 0 ->
                    Rectangle.opts ~height:l_depth ~width:r_depth ~top:height
-                     ~plane_view ()
+                     ~fill_color ~plane_view ()
                | 1 ->
                    Rectangle.opts ~height ~width:l_depth ~right:r_depth
-                     ~plane_view ()
+                     ~fill_color ~plane_view ()
                | _ ->
                    Rectangle.opts ~height ~width:r_depth ~left:l_depth
-                     ~plane_view ()
+                     ~fill_color ~plane_view ()
              in
 
              Rectangle.create ~opts:face_opts ())
@@ -246,7 +251,7 @@ end = struct
 
   let create ~edge_attributes ~left = function
     | [ dim1 ] ->
-        let Colors.{ length = l_depth; color = fill_color } =
+        let Colors.{ length = l_depth; color } =
           Hashtbl.(find edge_attributes dim1)
         in
         let children =
@@ -254,11 +259,12 @@ end = struct
             Rectangle.create
               ~opts:
                 (Rectangle.opts ~height:l_depth ~width:0.
-                   ~plane_view:Plane_view.top ())
+                   ~plane_view:Plane_view.top ~fill_color ())
               ();
             Text.create
               ~opts:
-                (Text.opts ~left:(l_depth *. 0.5) ~right:(-1.4) ~fill_color dim1)
+                (Text.opts ~left:(l_depth *. 0.5) ~right:(-1.4)
+                   ~fill_color:color dim1)
               ();
           ]
         in
@@ -269,14 +275,12 @@ end = struct
                 { length = r_depth; color = color2 } )) =
           Hashtbl.(find edge_attributes dim1, find edge_attributes dim2)
         in
-        Fmt.pr "l_depth: %f, r_depth: %f@." l_depth r_depth;
-        Fmt.pr "dim1: %s, dim2: %s@." dim1 dim2;
         let children =
           [
             Rectangle.create
               ~opts:
                 (Rectangle.opts ~height:l_depth ~width:r_depth
-                   ~plane_view:Plane_view.top ())
+                   ~plane_view:Plane_view.top ~fill_color ())
               ();
             Text.create
               ~opts:
@@ -291,7 +295,8 @@ end = struct
           ]
         in
         Group.create ~left ~top:(left /. 2.) children
-    | [ a; b; c ] -> Cube.create ~edge_attributes ~left ~labels:(a, b, c)
+    | [ a; b; c ] ->
+        Cube.create ~edge_attributes ~left ~fill_color ~labels:(a, b, c)
     | [] -> Text.create ~opts:(Text.opts ~left ~top:(left /. 2.) "(scalar)") ()
     | invalid ->
         failwith (Fmt.str "Invalid tensor: %a" Fmt.(list string) invalid)
@@ -324,7 +329,7 @@ end = struct
     let canvas =
       Canvas.create
         ~opts:
-          (Canvas.opts ~container ~background_color:"#ccc" ~scale ~height ~width
+          (Canvas.opts ~container ~background_color:"#fff" ~scale ~height ~width
              ())
         ()
     in
