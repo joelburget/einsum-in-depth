@@ -20,7 +20,7 @@ let draw_unary_contraction edge_attributes
       dangling_nodes
   in
 
-  let edges1 =
+  let contracted_edges =
     contracted
     |> List.map (fun name ->
            Edge.
@@ -34,23 +34,23 @@ let draw_unary_contraction edge_attributes
     |> Array.of_list
   in
 
-  let edges2 =
+  let preserved_edges =
     preserved
     |> List.map (fun name ->
            Edge.
              {
-               id = Fmt.str "contracted-%s" name;
+               id = Fmt.str "preserved-%s" name;
                color = get_color name;
                label = "";
                source = "tensor";
-               target = Fmt.str "preserved-%s" name;
+               target = name;
              })
     |> Array.of_list
   in
 
-  let edges = Array.append edges1 edges2 in
-
-  let elements = Elements.{ nodes; edges } in
+  let elements =
+    Elements.{ nodes; edges = Array.append contracted_edges preserved_edges }
+  in
   let el =
     Brr.El.div ~at:Brr.At.[ style (Jstr.v "background-color: white;") ] []
   in
