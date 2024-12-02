@@ -80,7 +80,7 @@ let mk_color_style color = At.style (Jstr.v Fmt.(str "color: %a" string color))
 let list_variables get_color vars =
   let mk_code x = code ~at:[ mk_color_style (get_color x) ] [ txt' x ] in
   match vars with
-  | [] -> []
+  | [] -> [ txt' "in his case there are none" ]
   | [ x ] -> [ mk_code x ]
   | [ x; y ] -> [ mk_code x; txt' " and "; mk_code y ]
   | xs ->
@@ -354,10 +354,10 @@ let explain container contraction_str path_str =
       | Unary_contraction _ -> false
       | Binary_contractions contractions -> List.length contractions > 1
     in
-    let framework_name =
+    let framework_name, framework_code_name =
       match code_preference with
-      | Einops.Numpy -> "Numpy"
-      | Pytorch -> "Pytorch"
+      | Einops.Numpy -> ("Numpy", "np")
+      | Pytorch -> ("Pytorch", "torch")
     in
     let mk_tensor_diagram_info () =
       info
@@ -552,10 +552,10 @@ let explain container contraction_str path_str =
           span (list_variables get_color free_indices);
           txt' "), while in inner loops we iterate over all summation indices (";
           span (list_variables get_color summation_indices);
-          txt' ") to sum over each product term.";
           txt'
-            "First, here's equivalent, simplified (but slow, because it's not \
-             vectorized) Python code. We initialize an empty ";
+            ") to sum over each product term. First, here's equivalent, \
+             simplified (but slow, because it's not vectorized) Python code. \
+             We initialize an empty ";
           code [ txt' "result" ];
           txt'
             " array and then iterate over every position in every axis, \
@@ -575,7 +575,7 @@ let explain container contraction_str path_str =
         [
           txt'
             "In this next version of the code, we use the Frobenius product (";
-          code [ txt' "sum(inputs)" ];
+          code [ txt' (Fmt.str "%s.sum(inputs)" framework_code_name) ];
           txt' ") instead of iterating over each summation index individually.";
         ];
       div ~at:(classes "flex flex-row")
@@ -681,14 +681,22 @@ let explain container contraction_str path_str =
           h1 ~at:(classes "font-normal") [ txt' "Einsum Explorer" ];
           p
             [
+              txt' "Einsum";
+              info
+                (span
+                   [
+                     txt' "Short for ";
+                     Brr.El.i [ txt' "Einstein summation" ];
+                     txt' " notation";
+                   ]);
               txt'
-                "Einsum notation is a compact and intuitive way to write many \
-                 linear algebra operations: ";
+                " notation is a compact and intuitive way to write many linear \
+                 algebra operations: ";
               op_button "matrix multiplication" "a b, b c -> a c";
               txt' ", ";
               op_button "dot" "a, a ->";
               txt' " / ";
-              op_button "Frobenius product" "a b, a b ->";
+              op_button "Frobenius" "a b, a b ->";
               info
                 (span
                    [
@@ -704,7 +712,7 @@ let explain container contraction_str path_str =
                         the same shape (of arbitrary dimension), pointwise \
                         multiplying them, and summing over each element.";
                    ]);
-              txt' ", ";
+              txt' " product, ";
               op_button "transpose" "a b -> b a";
               txt' ", ";
               op_button "trace" "a a ->";
@@ -718,14 +726,29 @@ let explain container contraction_str path_str =
                 "At the highest level, an einsum string describes the shapes \
                  of each of the input tensors";
               info
-                (span
+                (div
                    [
-                     txt'
-                       "A tensor is the generalization of a vector or matrix \
-                        to any number of dimensions. A vector is a \
-                        one-dimensional tensor. A matrix is a two-dimensional \
-                        tensor. A tensor can be three, four, or more \
-                        dimensions.";
+                     p
+                       [
+                         txt' "Here by ";
+                         Brr.El.i [ txt' "tensor" ];
+                         txt'
+                           " we simply mean a multi-dimensional array. Numpy \
+                            calls these ";
+                         code [ txt' "ndarray" ];
+                         txt'
+                           "s (n-dimensional arrays), but deep learning \
+                            frameworks typically call them tensors.";
+                       ];
+                     p
+                       [
+                         txt'
+                           "A tensor is the generalization of a vector or \
+                            matrix to any number of dimensions. A vector is a \
+                            one-dimensional tensor. A matrix is a \
+                            two-dimensional tensor. But a tensor can also be \
+                            three, four, or more dimensions.";
+                       ];
                    ]);
               txt'
                 " and the output tensor, by labeling each axis of each tensor. \
@@ -743,7 +766,10 @@ let explain container contraction_str path_str =
                    [
                      txt' "We use ";
                      a "https://einops.rocks/" "einops notation";
-                     txt' ", not the notation built in to Numpy and Pytorch.";
+                     txt'
+                       ", not the notation built in to Numpy and Pytorch. Note \
+                        that einops notation supports parenthesis and ellipsis \
+                        notation, but we don't.";
                    ]);
             ];
           div
