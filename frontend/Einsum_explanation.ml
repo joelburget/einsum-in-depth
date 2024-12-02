@@ -521,7 +521,7 @@ let explain container contraction_str path_str =
                 (tab_selector_s |> S.l1 (fun x -> [ x ]));
               Elr.def_children diagram_parent diagram_s;
               let div_children =
-                h2
+                h3
                   [
                     txt'
                       (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
@@ -587,12 +587,24 @@ let explain container contraction_str path_str =
                 [ frob_python_code ];
             ];
         ];
+      h2 [ txt' "Contraction Steps" ];
       p
         [
-          txt'
-            (Fmt.str "Next, we show the steps of the contraction, one by one%s:"
-               (if List.length steps = 1 then " (in this case there's just one)"
-                else ""));
+          txt' "Next, we show the steps of the contraction, one by one. ";
+          (match contractions with
+          | Unary_contraction _ ->
+              txt'
+                "In this case, since we're only contracting one tensor, \
+                 there's just a single step."
+          | Binary_contractions steps ->
+              txt'
+                (Fmt.str
+                   "In this case, since there are multiple tensors, we \
+                    contract one pair at a time%s."
+                   (match steps with
+                   | [ _ ] ->
+                       " (in this case there's just one pair, so one step)"
+                   | _ -> "")));
         ];
       div steps;
     ]
