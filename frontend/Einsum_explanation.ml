@@ -194,6 +194,119 @@ let radio :
   Evr.endless_listen (as_target input_elem) Ev.click (fun _ -> f value);
   input_elem
 
+module Tabs : sig
+  type tab = { name : string }
+
+  val make_tabs : tab list -> El.t signal * int signal
+end = struct
+  let chevron_down_icon () =
+    let open Brr_svg in
+    let open El in
+    svg
+      ~at:
+        (svg_classes
+           "pointer-events-none col-start-1 row-start-1 mr-2 size-5 \
+            self-center justify-self-end fill-gray-500 size-6"
+        @ [
+            svg_at "aria-hidden" "true";
+            svg_at "stroke" "currentColor";
+            svg_at "stroke-width" "1.5";
+          ]
+        @ [ viewbox "0 0 24 24"; fill "none" ])
+      [
+        path
+          ~at:
+            ([ d "m19.5 8.25-7.5 7.5-7.5-7.5" ]
+            @ [
+                svg_at "stroke-linecap" "round";
+                svg_at "stroke-linejoin" "round";
+              ])
+          [];
+      ]
+
+  type tab = { name : string }
+
+  let make_tabs tabs =
+    let current_tab_s, set_current_tab = S.create 0 in
+    let select =
+      El.select
+        ~at:
+          (At.v (Jstr.v "default-value") (Jstr.v (List.hd tabs).name)
+          :: At.v (Jstr.v "aria-label") (Jstr.v "Select a tab")
+          :: classes
+               "col-start-1 row-start-1 w-full appearance-none rounded-md \
+                bg-white py-2 pl-3 pr-8 text-base text-gray-900 outline \
+                outline-1 -outline-offset-1 outline-gray-300 focus:outline-2 \
+                focus:-outline-offset-2 focus:outline-indigo-600")
+        (List.map (fun tab -> El.option [ txt' tab.name ]) tabs)
+    in
+    let _listener =
+      Ev.listen Ev.change
+        (fun _evt ->
+          let tab_name = El.prop El.Prop.value select |> Jstr.to_string in
+          match List.find_index (fun tab -> tab.name = tab_name) tabs with
+          | Some i -> set_current_tab i
+          | None -> ())
+        (El.as_target select)
+    in
+    let elem =
+      current_tab_s
+      |> S.l1 (fun current_tab_num ->
+             div
+               [
+                 div
+                   ~at:
+                     (At.v (Jstr.v "aria-label") (Jstr.v "Tabs")
+                     :: classes "grid grid-cols-1 sm:hidden")
+                   [ select; embed_svg (chevron_down_icon ()) ];
+                 div
+                   ~at:(classes "hidden sm:block")
+                   [
+                     div
+                       ~at:(classes "border-b border-gray-200")
+                       [
+                         nav
+                           ~at:
+                             (At.v (Jstr.v "aria-label") (Jstr.v "Tabs")
+                             :: classes "-mb-px flex space-x-8")
+                           (tabs
+                           |> List.mapi (fun i tab ->
+                                  let attrs =
+                                    if i = current_tab_num then
+                                      At.v (Jstr.v "aria-current")
+                                        (Jstr.v "page")
+                                      :: classes
+                                           "border-indigo-500 text-indigo-600"
+                                    else
+                                      classes
+                                        "border-transparent text-gray-500 \
+                                         hover:border-gray-300 \
+                                         hover:text-gray-700"
+                                  in
+                                  let attrs =
+                                    attrs
+                                    @ classes
+                                        "whitespace-nowrap border-b-2 px-1 \
+                                         py-4 text-sm font-medium"
+                                  in
+                                  let but =
+                                    El.button ~at:attrs [ txt' tab.name ]
+                                  in
+                                  let evt =
+                                    Note_brr.Evr.on_el Ev.click
+                                      (fun _ -> ())
+                                      but
+                                  in
+                                  Logr.may_hold
+                                    E.(log evt (fun () -> set_current_tab i));
+                                  but));
+                       ];
+                   ];
+               ])
+    in
+    (elem, current_tab_s)
+end
+
 let explain container contraction_str path_str =
   let result_output = div [] in
   let parsed_path_signal, path_input, path_err_elem =
@@ -245,7 +358,7 @@ let explain container contraction_str path_str =
       | Einops.Numpy -> "Numpy"
       | Pytorch -> "Pytorch"
     in
-    let tensor_diagram_info =
+    let mk_tensor_diagram_info () =
       info
         (div
            [
@@ -278,6 +391,31 @@ let explain container contraction_str path_str =
                 { operations; contracted; preserved = _; result_type } =
             contraction
           in
+          let tab_selector_s, current_tab_s =
+            Tabs.make_tabs
+              [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
+          in
+          let diagram_s =
+            current_tab_s
+            |> S.map (fun i ->
+                   match i with
+                   | 0 ->
+                       [
+                         Tensor_diagram.draw_unary_contraction edge_attributes
+                           contraction;
+                         mk_tensor_diagram_info ();
+                       ]
+                   | _ ->
+                       if
+                         List.for_all Isometric.Tensor.is_valid
+                           [ tensor; result_type ]
+                       then
+                         [
+                           Isometric.Scene.render ~edge_attributes
+                             [ tensor; result_type ];
+                         ]
+                       else [])
+          in
           let contraction_children =
             match contraction.contracted with
             | [] -> []
@@ -299,23 +437,12 @@ let explain container contraction_str path_str =
                   span [ txt' ")." ];
                 ]
           in
-          let isometric_children =
-            if List.for_all Isometric.Tensor.is_valid [ tensor; result_type ]
-            then
-              [
-                Isometric.Scene.render ~edge_attributes [ tensor; result_type ];
-              ]
-            else []
-          in
+          let tab_selector_parent, diagram_parent = (div [], div []) in
+          Elr.def_children tab_selector_parent
+            (tab_selector_s |> S.l1 (fun x -> [ x ]));
+          Elr.def_children diagram_parent diagram_s;
           [
-            div
-              (contraction_children
-              @ [
-                  Tensor_diagram.draw_unary_contraction edge_attributes
-                    contraction;
-                  tensor_diagram_info;
-                ]
-              @ isometric_children);
+            div (contraction_children @ [ tab_selector_parent; diagram_parent ]);
           ]
       | Binary_contractions contractions ->
           List.mapi
@@ -345,33 +472,45 @@ let explain container contraction_str path_str =
                       span [ txt' ")." ];
                     ]
               in
-              let isometric_children =
-                if
-                  List.for_all Isometric.Tensor.is_valid
-                    [ l_tensor; r_tensor; result_type ]
-                then
+              let tab_selector_s, current_tab_s =
+                Tabs.make_tabs
                   [
-                    Isometric.Scene.render ~edge_attributes
-                      [ l_tensor; r_tensor; result_type ];
+                    { name = "Tensor Diagram" }; { name = "Isometric Diagram" };
                   ]
-                else []
               in
+              let diagram_s =
+                current_tab_s
+                |> S.map (fun i ->
+                       match i with
+                       | 0 ->
+                           [
+                             Tensor_diagram.draw_binary_contraction
+                               edge_attributes l_tensor r_tensor contraction;
+                             mk_tensor_diagram_info ();
+                           ]
+                       | _ ->
+                           if
+                             List.for_all Isometric.Tensor.is_valid
+                               [ l_tensor; r_tensor; result_type ]
+                           then
+                             [
+                               Isometric.Scene.render ~edge_attributes
+                                 [ l_tensor; r_tensor; result_type ];
+                             ]
+                           else [])
+              in
+              let tab_selector_parent, diagram_parent = (div [], div []) in
+              Elr.def_children tab_selector_parent
+                (tab_selector_s |> S.l1 (fun x -> [ x ]));
+              Elr.def_children diagram_parent diagram_s;
               let div_children =
-                [
-                  h2
-                    [
-                      txt'
-                        (if show_step_no then Fmt.str "Step %d: " (i + 1)
-                         else "");
-                    ];
-                ]
-                @ contraction_children
-                @ [
-                    Tensor_diagram.draw_binary_contraction edge_attributes
-                      l_tensor r_tensor contraction;
-                    tensor_diagram_info;
+                h2
+                  [
+                    txt'
+                      (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
                   ]
-                @ isometric_children
+                :: contraction_children
+                @ [ tab_selector_parent; diagram_parent ]
               in
               div div_children)
             contractions

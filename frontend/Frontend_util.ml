@@ -24,7 +24,8 @@ let ( code,
       ul,
       li,
       h1,
-      h2 ) =
+      h2,
+      nav ) =
   El.
     ( code,
       set_children,
@@ -43,7 +44,8 @@ let ( code,
       ul,
       li,
       h1,
-      h2 )
+      h2,
+      nav )
 
 let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
 let svg_at name value = Brr_svg.At.v (Jstr.v name) (Jstr.v value)
