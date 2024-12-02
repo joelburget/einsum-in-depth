@@ -451,6 +451,10 @@ let explain container contraction_str path_str =
                 Einops.Binary_contraction.
                   (contraction.l, contraction.r, contraction.result_type)
               in
+              let aligned_list, align_ppf = make_formatter () in
+              Fmt.(
+                pf align_ppf "@[%a@]@?" (list pp_var ~sep:sp)
+                  contraction.aligned);
               let contracted_list, contract_ppf = make_formatter () in
               Fmt.(
                 pf contract_ppf "@[%a@]@?" (list pp_var ~sep:sp)
@@ -460,6 +464,16 @@ let explain container contraction_str path_str =
                 pf binary_tensor_ppf "@[@[%a, %a@] -> @[%a@]@]@?"
                   (list pp_var ~sep:sp) l_tensor (list pp_var ~sep:sp) r_tensor
                   (list pp_var ~sep:sp) result_type);
+              let alignment_children =
+                match contraction.aligned with
+                | [] -> []
+                | _ ->
+                    [
+                      span [ txt' "Align " ];
+                      aligned_list;
+                      span [ txt' " (these indices are not summed over yet)." ];
+                    ]
+              in
               let contraction_children =
                 match contraction.contracted with
                 | [] -> []
@@ -467,7 +481,7 @@ let explain container contraction_str path_str =
                     [
                       span [ txt' "Contract " ];
                       contracted_list;
-                      span [ txt' " (" ];
+                      span [ txt' " (i.e. sum over these indices) (" ];
                       binary_tensor_code;
                       span [ txt' ")." ];
                     ]
@@ -509,7 +523,9 @@ let explain container contraction_str path_str =
                     txt'
                       (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
                   ]
-                :: contraction_children
+                :: alignment_children
+                @ [ txt' " " ]
+                @ contraction_children
                 @ [ tab_selector_parent; diagram_parent ]
               in
               div div_children)
