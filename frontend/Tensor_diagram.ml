@@ -1,6 +1,7 @@
 open Tensor_playground.Einops
 open Cytoscape
 
+let classes = Frontend_util.classes
 let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1
 
 let draw_unary_contraction edge_attributes
@@ -193,7 +194,11 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   in
 
   let el =
-    Brr.El.div ~at:Brr.At.[ style (Jstr.v "background-color: white;") ] []
+    Brr.El.div
+      ~at:
+        (Brr.At.[ style (Jstr.v "background-color: white;") ]
+        @ classes "mx-auto")
+      []
   in
   let opts =
     Cytoscape.opts ~container:el ~elements

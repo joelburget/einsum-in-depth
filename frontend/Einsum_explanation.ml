@@ -289,17 +289,17 @@ end = struct
                                         "whitespace-nowrap border-b-2 px-1 \
                                          py-4 text-sm font-medium"
                                   in
-                                  let but =
+                                  let btn =
                                     El.button ~at:attrs [ txt' tab.name ]
                                   in
                                   let evt =
                                     Note_brr.Evr.on_el Ev.click
                                       (fun _ -> ())
-                                      but
+                                      btn
                                   in
                                   Logr.may_hold
                                     E.(log evt (fun () -> set_current_tab i));
-                                  but));
+                                  btn));
                        ];
                    ];
                ])

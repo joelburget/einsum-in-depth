@@ -1,3 +1,4 @@
+let classes = Frontend_util.classes
 let default_height = 320
 let default_width = 500
 let isometric = Jv.get Jv.global "isometric"
@@ -307,7 +308,19 @@ module Scene : sig
 end = struct
   let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
       ~edge_attributes tensors =
-    let container = Brr.El.div [] in
+    let container =
+      Brr.El.div
+        ~at:
+          (classes "mx-auto"
+          @ Brr.At.
+              [
+                style
+                  (Jstr.v
+                     (Fmt.str "height: %dpx; width: %dpx;" default_height
+                        default_width));
+              ])
+        []
+    in
     let canvas =
       Canvas.create
         ~opts:
