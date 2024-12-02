@@ -841,7 +841,16 @@ end = struct
     [%expect {| .swapaxes(0, 2) |}]
 end
 
-module Pyloops = struct
+module Pyloops : sig
+  type t = {
+    free_indices : SS.t;
+    summation_indices : SS.t;
+    lhs_tensors : string list list;
+    rhs_tensor : string list;
+  }
+
+  val pp : ?use_frob:code_backend -> get_color -> t Fmt.t
+end = struct
   type t = {
     free_indices : SS.t;
     summation_indices : SS.t;
@@ -851,10 +860,15 @@ module Pyloops = struct
 
   let mk_indent indent = String.make (indent * 4) ' '
 
-  let pp get_color ppf
-      { free_indices; summation_indices; lhs_tensors; rhs_tensor } =
+  let pp ?use_frob get_color ppf
+      {
+        free_indices;
+        summation_indices = summation_indices_set;
+        lhs_tensors;
+        rhs_tensor;
+      } =
     let free_indices = SS.elements free_indices in
-    let summation_indices = SS.elements summation_indices in
+    let summation_indices = SS.elements summation_indices_set in
     let pp_var = pp_var get_color in
 
     let pp_d_var ppf var = Fmt.pf ppf "d_%a" pp_var var in
@@ -879,43 +893,66 @@ module Pyloops = struct
           indent + 1)
         0 free_indices
     in
-    (match summation_indices with
-    | [] -> ()
-    | _ ->
-        Fmt.pf ppf "%s# Loop over all summation indices@."
-          (mk_indent outer_indent));
-    Fmt.pf ppf "%stotal = 0@." (mk_indent outer_indent);
-    let inner_indent =
-      List.fold_left
-        (fun indent index ->
-          Fmt.pf ppf "%sfor %a in range(%a):@." (mk_indent indent) pp_var index
-            pp_d_var index;
-          indent + 1)
-        outer_indent summation_indices
-    in
-
-    (* summation inside loop *)
-    (* let indices = free_indices @ summation_indices in *)
     let pp_access ppf (tensor, indices) =
       Fmt.pf ppf "%s[%a]" tensor Fmt.(list ~sep:comma pp_var) indices
     in
-    (* Name tensors starting with A, then B, etc *)
-    let accesses =
-      List.mapi
-        (fun i tensor -> (String.make 1 (Char.chr (i + 65)), tensor))
-        lhs_tensors
-    in
-    Fmt.pf ppf "%stotal += @[%a@]@." (mk_indent inner_indent)
-      Fmt.(list ~sep:(any " * ") pp_access)
-      accesses;
+    (match use_frob with
+    | None -> (
+        (match summation_indices with
+        | [] -> ()
+        | _ ->
+            Fmt.pf ppf "%s# Loop over all summation indices@."
+              (mk_indent outer_indent));
+        Fmt.pf ppf "%stotal = 0@." (mk_indent outer_indent);
+        let inner_indent =
+          List.fold_left
+            (fun indent index ->
+              Fmt.pf ppf "%sfor %a in range(%a):@." (mk_indent indent) pp_var
+                index pp_d_var index;
+              indent + 1)
+            outer_indent summation_indices
+        in
 
-    (* assign total to result *)
-    (match rhs_tensor with
-    | [] -> ()
-    | _ ->
-        Fmt.pf ppf "%sresult[@[%a@]] = total@." (mk_indent outer_indent)
-          Fmt.(list ~sep:comma string)
-          free_indices);
+        (* summation inside loop *)
+        (* Name tensors starting with A, then B, etc *)
+        let accesses =
+          List.mapi
+            (fun i tensor -> (String.make 1 (Char.chr (i + 65)), tensor))
+            lhs_tensors
+        in
+        Fmt.pf ppf "%s@[<hov 4>total@ +=@ @[%a@]@]@." (mk_indent inner_indent)
+          Fmt.(list ~sep:(any " * ") pp_access)
+          accesses;
+
+        (* assign total to result *)
+        match rhs_tensor with
+        | [] -> ()
+        | _ ->
+            Fmt.pf ppf "%sresult[@[%a@]] = total@." (mk_indent outer_indent)
+              Fmt.(list ~sep:comma pp_var)
+              free_indices)
+    | Some backend ->
+        (match rhs_tensor with
+        | [] -> Fmt.pf ppf "%s@[<hov 4>total@ =@ " (mk_indent outer_indent)
+        | _ ->
+            Fmt.pf ppf "%s@[<hov 4>result[@[%a@]]@ +=@ "
+              (mk_indent outer_indent)
+              Fmt.(list ~sep:comma pp_var)
+              free_indices);
+        let accesses =
+          List.mapi
+            (fun i tensor ->
+              ( String.make 1 (Char.chr (i + 65)),
+                List.map
+                  (fun label ->
+                    if SS.mem label summation_indices_set then ":" else label)
+                  tensor ))
+            lhs_tensors
+        in
+        Fmt.pf ppf "@[%s.sum(@[%a@])@]@]@."
+          (match backend with Numpy -> "np" | Pytorch -> "torch")
+          Fmt.(list ~sep:(any " * ") pp_access)
+          accesses);
 
     (* return result *)
     match rhs_tensor with

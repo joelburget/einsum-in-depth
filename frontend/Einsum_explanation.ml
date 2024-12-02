@@ -343,8 +343,9 @@ let explain container contraction_str path_str =
   let render_steps path rewrite code_preference =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
     let get_color edge_name =
-      let { Colors.color; _ } = Hashtbl.find edge_attributes edge_name in
-      color
+      match Hashtbl.find_opt edge_attributes edge_name with
+      | None -> "#000"
+      | Some { Colors.color; _ } -> color
     in
     let pp_var = Einops.pp_var get_color in
     let contractions = Einops.Explain.get_contractions ?path rewrite in
@@ -536,6 +537,10 @@ let explain container contraction_str path_str =
     let pyloops = Einops.Explain.show_loops rewrite in
     let python_code, code_ppf = make_formatter () in
     Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp get_color) pyloops;
+    let frob_python_code, frob_code_ppf = make_formatter () in
+    Fmt.pf frob_code_ppf "%a@?"
+      (Einops.Pyloops.pp ~use_frob:code_preference get_color)
+      pyloops;
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
     [
@@ -564,6 +569,22 @@ let explain container contraction_str path_str =
               code
                 ~at:(classes "before:content-[''] after:content-['']")
                 [ python_code ];
+            ];
+        ];
+      p
+        [
+          txt'
+            "In this next version of the code, we use the Frobenius product (";
+          code [ txt' "sum(inputs)" ];
+          txt' ") instead of iterating over each summation index individually.";
+        ];
+      div ~at:(classes "flex flex-row")
+        [
+          El.pre
+            [
+              code
+                ~at:(classes "before:content-[''] after:content-['']")
+                [ frob_python_code ];
             ];
         ];
       p
