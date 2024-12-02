@@ -338,10 +338,11 @@ end = struct
     let segment_width = 20. in
     let array_midpoint = Float.of_int (n_tensors - 1) /. 2. in
 
-    tensors
-    |> List.iteri (fun i tensor ->
-           let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
-           Canvas.add_child canvas
-             (Tensor.create ~edge_attributes ~left:left_pos tensor));
+    List.iteri
+      (fun i tensor ->
+        let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
+        Canvas.add_child canvas
+          (Tensor.create ~edge_attributes ~left:left_pos tensor))
+      tensors;
     container
 end
