@@ -416,7 +416,12 @@ let explain container contraction_str path_str =
                            Isometric.Scene.render ~edge_attributes
                              [ tensor; result_type ];
                          ]
-                       else [])
+                       else
+                         [
+                           txt'
+                             "Isometric diagrams are only available for \
+                              tensors of dimension 3 or less.";
+                         ])
           in
           let contraction_children =
             match contraction.contracted with
@@ -514,7 +519,12 @@ let explain container contraction_str path_str =
                              Isometric.Scene.render ~edge_attributes
                                [ l_tensor; r_tensor; result_type ];
                            ]
-                         else [])
+                         else
+                           [
+                             txt'
+                               "Isometric diagrams are only available for \
+                                tensors of dimension 3 or less.";
+                           ])
               in
               let tab_selector_parent, diagram_parent = (div [], div []) in
               Elr.def_children tab_selector_parent
