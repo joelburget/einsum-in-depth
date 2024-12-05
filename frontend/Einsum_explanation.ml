@@ -313,7 +313,7 @@ let explain container contraction_str path_str =
     bracketed_parsed_input parse_path path_str
   in
 
-  let code_preference_signal, _code_preference_selector =
+  let code_preference_signal, code_preference_selector =
     let preference_signal, set_preference = S.create Einops.Numpy in
     let numpy_radio =
       radio ~desc:"Numpy"
@@ -571,7 +571,8 @@ let explain container contraction_str path_str =
             " array and then iterate over every position in every axis, \
              building up the result.";
         ];
-      (* code_preference_selector; *)
+      h2 [ txt' "Python Code" ];
+      code_preference_selector;
       div ~at:(classes "flex flex-row")
         [
           El.pre
