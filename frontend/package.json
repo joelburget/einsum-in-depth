@@ -1,12 +1,22 @@
 {
   "name": "tensor-playground",
   "version": "1.0.0",
-  "main": "index.js",
+  "src": "index.html",
   "license": "MIT",
   "devDependencies": {
     "tailwindcss": "^3.4.0"
   },
   "dependencies": {
-    "@tailwindcss/typography": "^0.5.15"
+    "@elchininet/isometric": "^3.10.0",
+    "@tailwindcss/typography": "^0.5.15",
+    "cose-base": "^2.2.0",
+    "cytoscape": "^3.30.4",
+    "cytoscape-fcose": "^2.2.0",
+    "layout-base": "^2.0.1",
+    "parcel": "^2.13.2"
+  },
+  "scripts": {
+    "start": "parcel ../_build/default/frontend/index.html",
+    "build": "parcel build ../_build/default/frontend/index.html"
   }
 }

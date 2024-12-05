@@ -2,7 +2,7 @@ let classes = Frontend_util.classes
 let default_height = 320
 let default_width = 500
 let fill_color = "#ccc"
-let isometric = Jv.get Jv.global "isometric"
+let isometric () = Jv.get Jv.global "isometric"
 
 module Plane_view : sig
   type t = Jstr.t
@@ -55,13 +55,23 @@ end = struct
     Jv.set_if_some o "fillColor" (Option.map Jv.of_string fill_color);
     o
 
-  let jobj = Jv.get isometric "IsometricRectangle"
-  let create ?(opts = Jv.undefined) () = Jv.new' jobj [| opts |]
+  let jobj () = Jv.get (isometric ()) "IsometricRectangle"
+  let create ?(opts = Jv.undefined) () = Jv.new' (jobj ()) [| opts |]
 end
 
-let copy_object obj =
-  let global_object = Jv.get Jv.global "Object" in
-  Jv.call global_object "assign" [| obj |]
+(*
+module Path : sig
+  type t = Jv.t
+  type point = { left : float; right : float; top : float }
+
+  val create : ?fill_color:string -> point list -> t
+end = struct
+  type t = Jv.t
+  type point = { left : float; right : float; top : float }
+
+  let create ?fill_color points = failwith "TODO"
+end
+*)
 
 module Text : sig
   type t = Jv.t
@@ -103,8 +113,8 @@ end = struct
     Jv.Jstr.set o "text" (Jstr.v text);
     o
 
-  let jobj = Jv.get isometric "IsometricText"
-  let create ?(opts = Jv.undefined) () = Jv.new' jobj [| opts |]
+  let jobj () = Jv.get (isometric ()) "IsometricText"
+  let create ?(opts = Jv.undefined) () = Jv.new' (jobj ()) [| opts |]
 end
 
 module Group : sig
@@ -122,14 +132,14 @@ end = struct
 
   type opts = Jv.t
 
-  let jobj = Jv.get isometric "IsometricGroup"
+  let jobj () = Jv.get (isometric ()) "IsometricGroup"
 
   let create ?(top = 0.) ?(left = 0.) ?(right = 0.) children =
     let opts = Jv.obj [||] in
     Jv.Float.set opts "top" top;
     Jv.Float.set opts "left" left;
     Jv.Float.set opts "right" right;
-    let group = Jv.new' jobj [| opts |] in
+    let group = Jv.new' (jobj ()) [| opts |] in
     let _ = Jv.call group "addChildren" (Array.of_list children) in
     group
 end
@@ -169,8 +179,8 @@ end = struct
     Jv.Int.set_if_some o "width" width;
     o
 
-  let jobj = Jv.get isometric "IsometricCanvas"
-  let create ?(opts = Jv.undefined) () = Jv.new' jobj [| opts |]
+  let jobj () = Jv.get (isometric ()) "IsometricCanvas"
+  let create ?(opts = Jv.undefined) () = Jv.new' (jobj ()) [| opts |]
   let add_child o child = ignore @@ Jv.call o "addChild" [| child |]
 end
 
@@ -194,7 +204,6 @@ end = struct
       (Hashtbl.find edge_attributes label).Colors.length
     in
     let l_depth, r_depth, height = (get_length 0, get_length 1, get_length 2) in
-    Fmt.pr "l_depth: %f, r_depth: %f, height: %f@." l_depth r_depth height;
     let faces =
       [ Plane_view.top; Plane_view.front; Plane_view.side ]
       |> List.mapi (fun i plane_view ->
@@ -348,3 +357,59 @@ end = struct
       tensors;
     container
 end
+
+(*
+module Binary_animation : sig
+  type t = Jv.t
+
+  val create :
+    l:string list ->
+    r:string list ->
+    result_type:string list ->
+    diag:string list ->
+    align:string list ->
+    contract:string list ->
+    t
+end = struct
+  (* Steps:
+     1. Take diagonals
+     2. Focus on just the dimensions we'll align for each tensor
+     3. Align the tensors
+     4. Contract the tensors
+  *)
+  type t = Jv.t
+
+  let create ~l ~r ~result_type ~diag ~align ~contract = failwith "TODO"
+end
+*)
+
+(*
+module Unary_animation : sig
+  type t = Jv.t
+
+  val create :
+    edge_attributes:Colors.edge_attributes ->
+    tensor:string list ->
+    diag:string list ->
+    contract:string list ->
+    (t * string) list
+end = struct
+  type t = Jv.t
+  (* Steps:
+     1. Take the diagonal
+     2. Contract the tensor
+  *)
+
+  let create ~edge_attributes ~tensor ~diag ~contract =
+    let original_tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+    match diag with
+    | [] ->
+      let path = Path.create [] in
+      let scene = Scene.create [original_tensor; path] in
+        [ (scene, "Contract the tensor") ]
+    | _ ->
+        let scene1 = failwith "TODO" in
+        let scene2 = failwith "TODO" in
+        [ (scene1, "Take the diagonal"); (scene2, "Contract the tensor") ]
+end
+*)
