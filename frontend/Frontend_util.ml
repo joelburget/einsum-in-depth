@@ -123,7 +123,7 @@ let parsed_input :
   let input_elem =
     input ~at:([ At.value (Jstr.of_string start_value) ] @ input_classes) ()
   in
-  let parse_error_elem = div (* ~at:(classes "inline") *) [] in
+  let parse_error_elem = div ~at:(classes "text-red-600") [] in
 
   let input_signal, set_input = S.create start_value in
   let parse_error_signal, set_parse_error = S.create [] in
@@ -177,7 +177,7 @@ let result_list : ('a, 'e) result list -> ('a list, 'e) result =
   loop results
 
 module Select_and_info : sig
-  val select : string list -> El.t * string signal
+  val select : string event -> string list -> El.t * string signal
   val info : El.t -> El.t
 end = struct
   let chevrons_svg =
@@ -310,8 +310,26 @@ end = struct
              else [ button ]));
     result_elem
 
-  let select items =
+  let select clicked_op_e items =
     let selected_signal, set_selected = S.create 0 in
+    let logr =
+      E.log clicked_op_e (fun clicked_op ->
+          let stripped_list =
+            List.map
+              (fun s ->
+                match String.split_on_char ':' s with
+                | [ _label; einsum ] -> String.trim einsum
+                | _ -> s)
+              items
+          in
+          let i =
+            match List.find_index (fun s -> s = clicked_op) stripped_list with
+            | None -> 0
+            | Some i -> i
+          in
+          set_selected i)
+    in
+    Logr.may_hold logr;
     let selected_item = selected_signal |> S.map (fun i -> List.nth items i) in
     let dropdown_open_signal, set_dropdown_open = S.create false in
 
@@ -418,7 +436,7 @@ end = struct
     (result_elem, selected_item)
 end
 
-let select items = Select_and_info.select items
+let select clicked_op_e items = Select_and_info.select clicked_op_e items
 let info child = Select_and_info.info child
 
 let a link text =

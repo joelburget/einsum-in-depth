@@ -621,9 +621,12 @@ let explain container contraction_str path_str =
     ]
   in
 
+  let clicked_op_in_text_e, send_clicked_op_in_text = E.create () in
+
   let selector, selected_signal =
-    select
+    select clicked_op_in_text_e
       [
+        "---";
         "a i j, a j k, a i k ->";
         "batch pos head_index d_model, head_index d_model d_head -> batch pos \
          head_index d_head";
@@ -636,6 +639,7 @@ let explain container contraction_str path_str =
         "column sum: i j -> j";
         "row sum: i j -> i";
         "hadamard product: i j, i j -> i j";
+        "frobenius prodduct: i j, i j ->";
         "outer product: i, j -> i j";
         "batch matrix multiplication: b i j, b j k -> b i k";
         (* tensor contraction *)
@@ -644,7 +648,6 @@ let explain container contraction_str path_str =
       ]
   in
 
-  let clicked_op_in_text, send_clicked_op_in_text = E.create () in
   let selected_changes =
     selected_signal |> S.changes |> E.map trim_before_colon
   in
@@ -659,7 +662,7 @@ let explain container contraction_str path_str =
 
   let logger, c_input, current_input =
     input' ~at:input_classes contraction_str
-      (E.select [ clicked_op_in_text; selected_changes ])
+      (E.select [ clicked_op_in_text_e; selected_changes ])
   in
   Logr.may_hold logger;
 
@@ -673,7 +676,7 @@ let explain container contraction_str path_str =
       (fun path rewrite code_preference ->
         match rewrite with
         | Ok rewrite -> render_steps path rewrite code_preference
-        | Error msg -> [ txt' msg ])
+        | Error msg -> [ div ~at:(classes "text-red-600") [ txt' msg ] ])
       parsed_path_signal parsed_input_signal code_preference_signal
   in
 
@@ -703,11 +706,11 @@ let explain container contraction_str path_str =
               txt'
                 " notation is a compact and intuitive way to write many linear \
                  algebra operations: ";
-              op_button "matrix multiplication" "a b, b c -> a c";
+              op_button "matrix multiplication" "i j, j k -> i k";
               txt' ", ";
-              op_button "dot" "a, a ->";
+              op_button "dot" "i, i ->";
               txt' " / ";
-              op_button "Frobenius" "a b, a b ->";
+              op_button "Frobenius" "i j, i j ->";
               info
                 (span
                    [
@@ -724,9 +727,9 @@ let explain container contraction_str path_str =
                         multiplying them, and summing over each element.";
                    ]);
               txt' " product, ";
-              op_button "transpose" "a b -> b a";
+              op_button "transpose" "i j -> j i";
               txt' ", ";
-              op_button "trace" "a a ->";
+              op_button "trace" "i i ->";
               txt' ", as well as many more ";
               op_button "complex operations" "a a b c, a d, d e f -> b c e f";
               txt' " which don't have a name.";
@@ -764,8 +767,15 @@ let explain container contraction_str path_str =
               txt'
                 " and the output tensor, by labeling each axis of each tensor. \
                  Whenever a label is repeated, it's summed, whereas if a label \
-                 only appears once, it's not summed. (Repeated labels on the \
-                 same tensor take elements on the diagonal.)";
+                 only appears once, it's not summed (compare ";
+              code [ txt' "a" ];
+              txt' " and ";
+              code [ txt' "b" ];
+              txt' "in a ";
+              op_button "matrix-vector product" "a b, b -> a";
+              txt'
+                "). (Repeated labels on the same tensor take elements on the \
+                 diagonal.)";
             ];
           div [ txt' "Choose an example: "; selector ];
           div
