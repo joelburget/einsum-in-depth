@@ -468,7 +468,7 @@ let explain container contraction_str path_str =
                   contraction.contracted);
               let binary_tensor_code, binary_tensor_ppf = make_formatter () in
               Fmt.(
-                pf binary_tensor_ppf "@[@[%a, %a@] -> @[%a@]@]@?"
+                pf binary_tensor_ppf "@[@[%a, %a@]@ ->@ @[%a@]@]@?"
                   (list pp_var ~sep:sp) l_tensor (list pp_var ~sep:sp) r_tensor
                   (list pp_var ~sep:sp) result_type);
               let alignment_children =
