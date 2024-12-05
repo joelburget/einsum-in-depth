@@ -99,6 +99,7 @@ let input' :
     string event ->
     Logr.t option * El.t * string signal =
  fun ?(at = []) start_value external_update_input ->
+  let at = At.value (Jstr.v start_value) :: at in
   let input_elem = input ~at () in
   let input_signal, set_input = S.create start_value in
   Evr.endless_listen (as_target input_elem) Ev.change (fun _evt ->
