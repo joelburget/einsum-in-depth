@@ -307,114 +307,179 @@ end = struct
     (elem, current_tab_s)
 end
 
-let explain container contraction_str path_str =
-  let result_output = div [] in
-  let parsed_path_signal, path_input, path_err_elem =
-    bracketed_parsed_input parse_path path_str
+let render_steps path rewrite code_preference_selector code_preference =
+  let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
+  let get_color edge_name =
+    match Hashtbl.find_opt edge_attributes edge_name with
+    | None -> if Colors.prefers_dark () then "#fff" else "#000"
+    | Some { Colors.color; _ } -> color
   in
-
-  let code_preference_signal, code_preference_selector =
-    let preference_signal, set_preference = S.create Einops.Numpy in
-    let numpy_radio =
-      radio ~desc:"Numpy"
-        ~selected:
-          (preference_signal
-          |> S.map (function Einops.Numpy -> true | Pytorch -> false))
-        Einops.Numpy set_preference
-    in
-    let torch_radio =
-      radio ~desc:"Pytorch"
-        ~selected:
-          (preference_signal
-          |> S.map (function Einops.Numpy -> false | Pytorch -> true))
-        Einops.Pytorch set_preference
-    in
-    let selector =
-      Brr.El.(
-        fieldset
-          ~at:
-            (At.v (Jstr.v "role") (Jstr.v "radiogroup")
-            :: classes "mt-2 grid grid-cols-2 gap-3 max-w-48")
-          [ numpy_radio; torch_radio ])
-    in
-    (preference_signal, selector)
+  let pp_var = Einops.pp_var get_color in
+  let contractions = Einops.Explain.get_contractions ?path rewrite in
+  let show_step_no =
+    match contractions with
+    | Unary_contraction _ -> false
+    | Binary_contractions contractions -> List.length contractions > 1
   in
-
-  let render_steps path rewrite code_preference =
-    let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
-    let get_color edge_name =
-      match Hashtbl.find_opt edge_attributes edge_name with
-      | None -> if Colors.prefers_dark () then "#fff" else "#000"
-      | Some { Colors.color; _ } -> color
-    in
-    let pp_var = Einops.pp_var get_color in
-    let contractions = Einops.Explain.get_contractions ?path rewrite in
-    let show_step_no =
-      match contractions with
-      | Unary_contraction _ -> false
-      | Binary_contractions contractions -> List.length contractions > 1
-    in
-    let framework_name, framework_code_name =
-      match code_preference with
-      | Einops.Numpy -> ("Numpy", "np")
-      | Pytorch -> ("Pytorch", "torch")
-    in
-    let mk_tensor_diagram_info () =
-      info
-        (div
-           [
-             h2 ~at:(classes "text-lg") [ txt' "Interpreting a Tensor Diagram" ];
-             p
-               [
-                 txt'
-                   "Each node in a tensor diagram represents a tensor (e.g a \
-                    matrix or vector). Each line emanating from a tensor \
-                    represents one of that tensor's dimensions. When two \
-                    tensors are connected by a single line that represents a \
-                    contraction (summation over the connected indices). Look \
-                    through the examples to see how common operations \
-                    correspond to tensor diagrams.";
-               ];
-             p
-               [
-                 txt' "See ";
-                 a "https://tensornetwork.org/diagrams/" "tensornetwork.org";
-                 txt' " or ";
-                 a "https://www.tensors.net/intro" "tensors.net";
-                 txt' " for more.";
-               ];
-           ])
-    in
-    let steps =
-      match contractions with
-      | Einops.Explain.Unary_contraction (tensor, contraction) ->
-          let Einops.Unary_contraction.
-                { operations; contracted; preserved = _; result_type } =
-            contraction
-          in
-          let valid_isometric_tensors =
-            List.for_all Isometric.Tensor.is_valid [ tensor; result_type ]
-          in
-          let tab_selector_s, current_tab_s =
-            Tabs.make_tabs
-              ~default:(if valid_isometric_tensors then 1 else 0)
-              [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
-          in
-          let diagram_s =
-            current_tab_s
-            |> S.map (fun i ->
-                   match i with
+  let framework_name, framework_code_name =
+    match code_preference with
+    | Einops.Numpy -> ("Numpy", "np")
+    | Pytorch -> ("Pytorch", "torch")
+  in
+  let mk_tensor_diagram_info () =
+    info
+      (div
+         [
+           h2 ~at:(classes "text-lg") [ txt' "Interpreting a Tensor Diagram" ];
+           p
+             [
+               txt'
+                 "Each node in a tensor diagram represents a tensor (e.g a \
+                  matrix or vector). Each line emanating from a tensor \
+                  represents one of that tensor's dimensions. When two tensors \
+                  are connected by a single line that represents a contraction \
+                  (summation over the connected indices). Look through the \
+                  examples to see how common operations correspond to tensor \
+                  diagrams.";
+             ];
+           p
+             [
+               txt' "See ";
+               a "https://tensornetwork.org/diagrams/" "tensornetwork.org";
+               txt' " or ";
+               a "https://www.tensors.net/intro" "tensors.net";
+               txt' " for more.";
+             ];
+         ])
+  in
+  let steps =
+    match contractions with
+    | Einops.Explain.Unary_contraction (tensor, contraction) ->
+        let Einops.Unary_contraction.
+              { operations; contracted; preserved = _; result_type } =
+          contraction
+        in
+        let valid_isometric_tensors =
+          List.for_all Isometric.Tensor.is_valid [ tensor; result_type ]
+        in
+        let tab_selector_s, current_tab_s =
+          Tabs.make_tabs
+            ~default:(if valid_isometric_tensors then 1 else 0)
+            [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
+        in
+        let diagram_s =
+          current_tab_s
+          |> S.map (fun i ->
+                 match i with
+                 | 0 ->
+                     [
+                       Tensor_diagram.draw_unary_contraction edge_attributes
+                         contraction;
+                       mk_tensor_diagram_info ();
+                     ]
+                 | _ ->
+                     if valid_isometric_tensors then
+                       [
+                         Isometric.Scene.render ~edge_attributes
+                           [ tensor; result_type ];
+                       ]
+                     else
+                       [
+                         txt'
+                           "Isometric diagrams are only available for tensors \
+                            of dimension 3 or less.";
+                       ])
+        in
+        let contraction_children =
+          match contraction.contracted with
+          | [] -> []
+          | _ ->
+              let contracted_list, code_ppf = make_formatter () in
+              Fmt.(pf code_ppf "%a@?" (list ~sep:sp pp_var) contracted);
+              [
+                span [ txt' "Contract " ];
+                contracted_list;
+                span [ txt' Fmt.(str "(in %s this would be " framework_name) ];
+                code
+                  [
+                    txt'
+                      Fmt.(
+                        str "%a"
+                          (Einops.Unary_contraction.pp_ops code_preference)
+                          operations);
+                  ];
+                span [ txt' ")." ];
+              ]
+        in
+        let tab_selector_parent, diagram_parent = (div [], div []) in
+        Elr.def_children tab_selector_parent
+          (tab_selector_s |> S.l1 (fun x -> [ x ]));
+        Elr.def_children diagram_parent diagram_s;
+        [ div (contraction_children @ [ tab_selector_parent; diagram_parent ]) ]
+    | Binary_contractions contractions ->
+        List.mapi
+          (fun i contraction ->
+            let l_tensor, r_tensor, result_type =
+              Einops.Binary_contraction.
+                (contraction.l, contraction.r, contraction.result_type)
+            in
+            let aligned_list, align_ppf = make_formatter () in
+            Fmt.(
+              pf align_ppf "@[%a@]@?" (list pp_var ~sep:sp) contraction.aligned);
+            let contracted_list, contract_ppf = make_formatter () in
+            Fmt.(
+              pf contract_ppf "@[%a@]@?" (list pp_var ~sep:sp)
+                contraction.contracted);
+            let binary_tensor_code, binary_tensor_ppf = make_formatter () in
+            Fmt.(
+              pf binary_tensor_ppf "@[@[%a, %a@]@ ->@ @[%a@]@]@?"
+                (list pp_var ~sep:sp) l_tensor (list pp_var ~sep:sp) r_tensor
+                (list pp_var ~sep:sp) result_type);
+            let alignment_children =
+              match contraction.aligned with
+              | [] -> []
+              | _ ->
+                  [
+                    span [ txt' "Align " ];
+                    aligned_list;
+                    span [ txt' " (these indices are not summed over yet)." ];
+                  ]
+            in
+            let contraction_children =
+              match contraction.contracted with
+              | [] -> []
+              | _ ->
+                  [
+                    span [ txt' "Contract " ];
+                    contracted_list;
+                    span [ txt' " (i.e. sum over these indices) (" ];
+                    binary_tensor_code;
+                    span [ txt' ")." ];
+                  ]
+            in
+            let valid_isometric_tensors =
+              List.for_all Isometric.Tensor.is_valid
+                [ l_tensor; r_tensor; result_type ]
+            in
+            let tab_selector_s, current_tab_s =
+              Tabs.make_tabs
+                ~default:(if valid_isometric_tensors then 1 else 0)
+                [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
+            in
+            let diagram_s =
+              current_tab_s
+              |> S.map (function
                    | 0 ->
                        [
-                         Tensor_diagram.draw_unary_contraction edge_attributes
-                           contraction;
+                         Tensor_diagram.draw_binary_contraction edge_attributes
+                           l_tensor r_tensor contraction;
                          mk_tensor_diagram_info ();
                        ]
                    | _ ->
                        if valid_isometric_tensors then
                          [
                            Isometric.Scene.render ~edge_attributes
-                             [ tensor; result_type ];
+                             [ l_tensor; r_tensor; result_type ];
                          ]
                        else
                          [
@@ -422,203 +487,133 @@ let explain container contraction_str path_str =
                              "Isometric diagrams are only available for \
                               tensors of dimension 3 or less.";
                          ])
-          in
-          let contraction_children =
-            match contraction.contracted with
-            | [] -> []
-            | _ ->
-                let contracted_list, code_ppf = make_formatter () in
-                Fmt.(pf code_ppf "%a@?" (list ~sep:sp pp_var) contracted);
+            in
+            let tab_selector_parent, diagram_parent = (div [], div []) in
+            Elr.def_children tab_selector_parent
+              (tab_selector_s |> S.l1 (fun x -> [ x ]));
+            Elr.def_children diagram_parent diagram_s;
+            let div_children =
+              h3
                 [
-                  span [ txt' "Contract " ];
-                  contracted_list;
-                  span [ txt' Fmt.(str "(in %s this would be " framework_name) ];
-                  code
-                    [
-                      txt'
-                        Fmt.(
-                          str "%a"
-                            (Einops.Unary_contraction.pp_ops code_preference)
-                            operations);
-                    ];
-                  span [ txt' ")." ];
+                  txt'
+                    (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
                 ]
-          in
-          let tab_selector_parent, diagram_parent = (div [], div []) in
-          Elr.def_children tab_selector_parent
-            (tab_selector_s |> S.l1 (fun x -> [ x ]));
-          Elr.def_children diagram_parent diagram_s;
+              :: alignment_children
+              @ [ txt' " " ]
+              @ contraction_children
+              @ [ tab_selector_parent; diagram_parent ]
+            in
+            div div_children)
+          contractions
+  in
+  let pyloops = Einops.Explain.show_loops rewrite in
+  let python_code, code_ppf = make_formatter () in
+  Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp get_color) pyloops;
+  let frob_python_code, frob_code_ppf = make_formatter () in
+  Fmt.pf frob_code_ppf "%a@?"
+    (Einops.Pyloops.pp ~use_frob:code_preference get_color)
+    pyloops;
+  let free_indices = String_set.to_list pyloops.free_indices in
+  let summation_indices = String_set.to_list pyloops.summation_indices in
+  [
+    p
+      [
+        txt'
+          "In outer loops, we iterate over all free indices to generate each \
+           output element (";
+        span (list_variables get_color free_indices);
+        txt' "), while in inner loops we iterate over all summation indices (";
+        span (list_variables get_color summation_indices);
+        txt'
+          ") to sum over each product term. First, here's equivalent, \
+           simplified (but slow, because it's not vectorized) Python code. We \
+           initialize an empty ";
+        code [ txt' "result" ];
+        txt'
+          " array and then iterate over every position in every axis, building \
+           up the result.";
+      ];
+    h2 [ txt' "Python Code" ];
+    code_preference_selector;
+    div ~at:(classes "flex flex-row")
+      [
+        El.pre
           [
-            div (contraction_children @ [ tab_selector_parent; diagram_parent ]);
-          ]
-      | Binary_contractions contractions ->
-          List.mapi
-            (fun i contraction ->
-              let l_tensor, r_tensor, result_type =
-                Einops.Binary_contraction.
-                  (contraction.l, contraction.r, contraction.result_type)
-              in
-              let aligned_list, align_ppf = make_formatter () in
-              Fmt.(
-                pf align_ppf "@[%a@]@?" (list pp_var ~sep:sp)
-                  contraction.aligned);
-              let contracted_list, contract_ppf = make_formatter () in
-              Fmt.(
-                pf contract_ppf "@[%a@]@?" (list pp_var ~sep:sp)
-                  contraction.contracted);
-              let binary_tensor_code, binary_tensor_ppf = make_formatter () in
-              Fmt.(
-                pf binary_tensor_ppf "@[@[%a, %a@]@ ->@ @[%a@]@]@?"
-                  (list pp_var ~sep:sp) l_tensor (list pp_var ~sep:sp) r_tensor
-                  (list pp_var ~sep:sp) result_type);
-              let alignment_children =
-                match contraction.aligned with
-                | [] -> []
-                | _ ->
-                    [
-                      span [ txt' "Align " ];
-                      aligned_list;
-                      span [ txt' " (these indices are not summed over yet)." ];
-                    ]
-              in
-              let contraction_children =
-                match contraction.contracted with
-                | [] -> []
-                | _ ->
-                    [
-                      span [ txt' "Contract " ];
-                      contracted_list;
-                      span [ txt' " (i.e. sum over these indices) (" ];
-                      binary_tensor_code;
-                      span [ txt' ")." ];
-                    ]
-              in
-              let valid_isometric_tensors =
-                List.for_all Isometric.Tensor.is_valid
-                  [ l_tensor; r_tensor; result_type ]
-              in
-              let tab_selector_s, current_tab_s =
-                Tabs.make_tabs
-                  ~default:(if valid_isometric_tensors then 1 else 0)
-                  [
-                    { name = "Tensor Diagram" }; { name = "Isometric Diagram" };
-                  ]
-              in
-              let diagram_s =
-                current_tab_s
-                |> S.map (function
-                     | 0 ->
-                         [
-                           Tensor_diagram.draw_binary_contraction
-                             edge_attributes l_tensor r_tensor contraction;
-                           mk_tensor_diagram_info ();
-                         ]
-                     | _ ->
-                         if valid_isometric_tensors then
-                           [
-                             Isometric.Scene.render ~edge_attributes
-                               [ l_tensor; r_tensor; result_type ];
-                           ]
-                         else
-                           [
-                             txt'
-                               "Isometric diagrams are only available for \
-                                tensors of dimension 3 or less.";
-                           ])
-              in
-              let tab_selector_parent, diagram_parent = (div [], div []) in
-              Elr.def_children tab_selector_parent
-                (tab_selector_s |> S.l1 (fun x -> [ x ]));
-              Elr.def_children diagram_parent diagram_s;
-              let div_children =
-                h3
-                  [
-                    txt'
-                      (if show_step_no then Fmt.str "Step %d: " (i + 1) else "");
-                  ]
-                :: alignment_children
-                @ [ txt' " " ]
-                @ contraction_children
-                @ [ tab_selector_parent; diagram_parent ]
-              in
-              div div_children)
-            contractions
-    in
-    let pyloops = Einops.Explain.show_loops rewrite in
-    let python_code, code_ppf = make_formatter () in
-    Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp get_color) pyloops;
-    let frob_python_code, frob_code_ppf = make_formatter () in
-    Fmt.pf frob_code_ppf "%a@?"
-      (Einops.Pyloops.pp ~use_frob:code_preference get_color)
-      pyloops;
-    let free_indices = String_set.to_list pyloops.free_indices in
-    let summation_indices = String_set.to_list pyloops.summation_indices in
-    [
-      p
-        [
-          txt'
-            "In outer loops, we iterate over all free indices to generate each \
-             output element (";
-          span (list_variables get_color free_indices);
-          txt' "), while in inner loops we iterate over all summation indices (";
-          span (list_variables get_color summation_indices);
-          txt'
-            ") to sum over each product term. First, here's equivalent, \
-             simplified (but slow, because it's not vectorized) Python code. \
-             We initialize an empty ";
-          code [ txt' "result" ];
-          txt'
-            " array and then iterate over every position in every axis, \
-             building up the result.";
-        ];
-      h2 [ txt' "Python Code" ];
-      code_preference_selector;
-      div ~at:(classes "flex flex-row")
-        [
-          El.pre
-            [
-              code
-                ~at:(classes "before:content-[''] after:content-['']")
-                [ python_code ];
-            ];
-        ];
-      p
-        [
-          txt'
-            "In this next version of the code, we use the Frobenius product (";
-          code [ txt' (Fmt.str "%s.sum(inputs)" framework_code_name) ];
-          txt' ") instead of iterating over each summation index individually.";
-        ];
-      div ~at:(classes "flex flex-row")
-        [
-          El.pre
-            [
-              code
-                ~at:(classes "before:content-[''] after:content-['']")
-                [ frob_python_code ];
-            ];
-        ];
-      h2 [ txt' "Contraction Steps" ];
-      p
-        [
-          txt' "Next, we show the steps of the contraction, one by one. ";
-          (match contractions with
-          | Unary_contraction _ ->
-              txt'
-                "In this case, since we're only contracting one tensor, \
-                 there's just a single step."
-          | Binary_contractions steps ->
-              txt'
-                (Fmt.str
-                   "In this case, since there are multiple tensors, we \
-                    contract one pair at a time%s."
-                   (match steps with
-                   | [ _ ] ->
-                       " (in this case there's just one pair, so one step)"
-                   | _ -> "")));
-        ];
-      div steps;
-    ]
+            code
+              ~at:(classes "before:content-[''] after:content-['']")
+              [ python_code ];
+          ];
+      ];
+    p
+      [
+        txt' "In this next version of the code, we use the Frobenius product (";
+        code [ txt' (Fmt.str "%s.sum(inputs)" framework_code_name) ];
+        txt' ") instead of iterating over each summation index individually.";
+      ];
+    div ~at:(classes "flex flex-row")
+      [
+        El.pre
+          [
+            code
+              ~at:(classes "before:content-[''] after:content-['']")
+              [ frob_python_code ];
+          ];
+      ];
+    h2 [ txt' "Contraction Steps" ];
+    p
+      [
+        txt' "Next, we show the steps of the contraction, one by one. ";
+        (match contractions with
+        | Unary_contraction _ ->
+            txt'
+              "In this case, since we're only contracting one tensor, there's \
+               just a single step."
+        | Binary_contractions steps ->
+            txt'
+              (Fmt.str
+                 "In this case, since there are multiple tensors, we contract \
+                  one pair at a time%s."
+                 (match steps with
+                 | [ _ ] -> " (in this case there's just one pair, so one step)"
+                 | _ -> "")));
+      ];
+    div steps;
+  ]
+
+let mk_code_preference_selector () =
+  let preference_signal, set_preference = S.create Einops.Numpy in
+  let numpy_radio =
+    radio ~desc:"Numpy"
+      ~selected:
+        (preference_signal
+        |> S.map (function Einops.Numpy -> true | Pytorch -> false))
+      Einops.Numpy set_preference
+  in
+  let torch_radio =
+    radio ~desc:"Pytorch"
+      ~selected:
+        (preference_signal
+        |> S.map (function Einops.Numpy -> false | Pytorch -> true))
+      Einops.Pytorch set_preference
+  in
+  let selector =
+    Brr.El.(
+      fieldset
+        ~at:
+          (At.v (Jstr.v "role") (Jstr.v "radiogroup")
+          :: classes "mt-2 grid grid-cols-2 gap-3 max-w-48")
+        [ numpy_radio; torch_radio ])
+  in
+  (preference_signal, selector)
+
+let explain container contraction_str path_str =
+  let result_output = div [] in
+  let parsed_path_signal, path_input, path_err_elem =
+    bracketed_parsed_input parse_path path_str
+  in
+
+  let code_preference_signal, code_preference_selector =
+    mk_code_preference_selector ()
   in
 
   let clicked_op_in_text_e, send_clicked_op_in_text = E.create () in
@@ -675,7 +670,8 @@ let explain container contraction_str path_str =
     S.l3
       (fun path rewrite code_preference ->
         match rewrite with
-        | Ok rewrite -> render_steps path rewrite code_preference
+        | Ok rewrite ->
+            render_steps path rewrite code_preference_selector code_preference
         | Error msg -> [ div ~at:(classes "text-red-600") [ txt' msg ] ])
       parsed_path_signal parsed_input_signal code_preference_signal
   in
@@ -880,3 +876,5 @@ let explain container contraction_str path_str =
           div ~at:(classes "min-h-32") [];
         ];
     ]
+
+let tutorial container = set_children container [ div [] ]
