@@ -626,7 +626,6 @@ let explain container contraction_str path_str =
         "batch pos head_index d_model, head_index d_model d_head -> batch pos \
          head_index d_head";
         "inner product: i, i ->";
-        "i j, i j ->";
         "matrix multiplication: i j, j k -> i k";
         "trace: i i ->";
         "transpose: i j -> j i";
