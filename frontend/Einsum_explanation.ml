@@ -636,7 +636,6 @@ let explain container contraction_str path_str =
         "frobenius prodduct: i j, i j ->";
         "outer product: i, j -> i j";
         "batch matrix multiplication: b i j, b j k -> b i k";
-        (* tensor contraction *)
         "p q r s, t u q v r -> p s t u v";
         "bilinear transformation: i j, j k l -> i j";
       ]
