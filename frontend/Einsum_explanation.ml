@@ -516,6 +516,7 @@ let render_steps path rewrite code_preference_selector code_preference =
   let free_indices = String_set.to_list pyloops.free_indices in
   let summation_indices = String_set.to_list pyloops.summation_indices in
   [
+    h2 [ txt' "Python Code" ];
     p
       [
         txt'
@@ -533,7 +534,6 @@ let render_steps path rewrite code_preference_selector code_preference =
           " array and then iterate over every position in every axis, building \
            up the result.";
       ];
-    h2 [ txt' "Python Code" ];
     code_preference_selector;
     div ~at:(classes "flex flex-row")
       [
