@@ -875,4 +875,75 @@ let explain container contraction_str path_str =
         ];
     ]
 
-let tutorial container = set_children container [ div [] ]
+let tutorial container =
+  let overlay_hidden_s, set_overlay_hidden = S.create true in
+
+  let close_button =
+    El.button
+      ~at:(classes "md:hidden text-blue-500 font-semibold")
+      [ txt' "Close" ]
+  in
+
+  let example_1 = El.li [ El.txt' "Example 1" ] in
+  let example_2 = El.li [ El.txt' "Example 2" ] in
+
+  (* Left pane: essay list *)
+  let left_pane =
+    El.div
+      ~at:
+        (classes "flex-1 md:w-1/2 w-full overflow-y-auto bg-white border-r p-4")
+      [ El.h2 [ txt' "List of Examples" ]; El.ul [ example_1; example_2 ] ]
+  in
+
+  (* On mobile, the right pane is a full-screen collapsible overlay.
+     On desktop, it's displayed side-by-side. *)
+  let right_pane =
+    El.div
+      ~at:
+        ((* On desktop: static position, normal layout *)
+         (* On mobile: fixed overlay hidden by default (translate-y-full),
+            can be toggled via JS to show/hide *)
+         classes
+           "md:w-1/2 w-full overflow-y-auto p-4 bg-gray-50 md:static \
+            md:translate-y-0 md:relative fixed bottom-0 left-0 right-0 top-0 \
+            transform transition-transform duration-300 ease-in-out \
+            md:border-none border-t border-gray-300 z-50")
+        (* translate-y-full *)
+      [
+        El.div
+          ~at:(classes "flex items-center justify-between border-b pb-2 mb-4")
+          [ El.h2 [ txt' "Explanation" ]; close_button ];
+        El.p [ txt' "Click on an example to see its explanation here." ];
+      ]
+  in
+
+  Elr.def_class (Jstr.v "translate-y-full") overlay_hidden_s right_pane;
+
+  (* Show overlay when example 1 is clicked *)
+  let _show_listener_1 =
+    Ev.listen Ev.click
+      (fun _ -> set_overlay_hidden false)
+      (El.as_target example_1)
+  in
+
+  let _show_listener_2 =
+    Ev.listen Ev.click
+      (fun _ -> set_overlay_hidden false)
+      (El.as_target example_2)
+  in
+
+  (* Hide overlay when close button is clicked *)
+  let _hide_listener =
+    Ev.listen Ev.click
+      (fun _ ->
+        set_overlay_hidden true (* El.add_class "translate-y-full" right_pane *))
+      (El.as_target close_button)
+  in
+
+  let wrapper =
+    El.div
+      ~at:(classes "relative flex flex-col md:flex-row h-screen")
+      [ left_pane; right_pane ]
+  in
+
+  set_children container [ wrapper ]
