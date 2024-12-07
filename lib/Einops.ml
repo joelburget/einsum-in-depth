@@ -56,14 +56,16 @@ end
 module Group = struct
   type t = string list
 
-  let pp = Fmt.(box (list ~sep:sp string))
+  let pp_friendly = Fmt.(box (list ~sep:sp string))
+  let pp_original ppf group = Fmt.string ppf (String.concat "" group)
 end
 
 (** Bindings are the left-hand side of a rewrite. *)
 module Bindings = struct
   type t = Group.t list
 
-  let pp = Fmt.(box (list ~sep:comma Group.pp))
+  let pp_friendly = Fmt.(box (list ~sep:comma Group.pp_friendly))
+  let pp_original = Fmt.(box (list ~sep:comma Group.pp_original))
 end
 
 (** A Rewrite binds some groups of tensor indices and results in some tensor indices. *)
@@ -74,7 +76,8 @@ module Rewrite : sig
   val indices : t -> indices
   val free_indices : t -> SS.t
   val summation_indices : t -> SS.t
-  val pp : t Fmt.t
+  val pp_friendly : t Fmt.t
+  val pp_original : t Fmt.t
   val validate : t -> string option
 end = struct
   type t = Bindings.t * Group.t
@@ -87,7 +90,12 @@ end = struct
 
   let free_indices t = (indices t).free
   let summation_indices t = (indices t).summation
-  let pp = Fmt.(box (pair ~sep:(any " -> ") Bindings.pp Group.pp))
+
+  let pp_friendly =
+    Fmt.(box (pair ~sep:(any " -> ") Bindings.pp_friendly Group.pp_friendly))
+
+  let pp_original =
+    Fmt.(box (pair ~sep:(any " -> ") Bindings.pp_original Group.pp_original))
 
   let validate (lhs, rhs) =
     let lhs_set = lhs |> List.flatten |> SS.of_list in
