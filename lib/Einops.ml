@@ -78,6 +78,10 @@ module Rewrite : sig
   val summation_indices : t -> SS.t
   val pp_friendly : t Fmt.t
   val pp_original : t Fmt.t
+
+  val to_original : t -> t
+  (** Convert a "friendly" Einsum into one compatible with the original format by making every identifier a single character. *)
+
   val validate : t -> string option
 end = struct
   type t = Bindings.t * Group.t
@@ -96,6 +100,36 @@ end = struct
 
   let pp_original =
     Fmt.(box (pair ~sep:(any " -> ") Bindings.pp_original Group.pp_original))
+
+  let assign_chars strs =
+    let used = ref [] in
+    let pick_char s =
+      let first = s.[0] in
+      (* Try first char first *)
+      if not (List.mem first !used) then (
+        used := first :: !used;
+        String.make 1 first)
+      else
+        (* If first is taken, pick the next available letter in the alphabet *)
+        let rec try_alphabet c =
+          if c > 'z' then failwith "Ran out of letters"
+          else if List.mem c !used then
+            try_alphabet (Char.chr (Char.code c + 1))
+          else (
+            used := c :: !used;
+            String.make 1 c)
+        in
+        try_alphabet (Char.chr (Char.code 'a'))
+    in
+    List.map pick_char strs
+
+  let to_original (lhs, rhs) =
+    let { free; summation } = indices (lhs, rhs) in
+    let all_indices = SS.union free summation |> SS.to_list in
+    let assigned_chars = assign_chars all_indices in
+    let assoc_list = List.combine all_indices assigned_chars in
+    let find_char x = List.assoc x assoc_list in
+    (List.map (List.map find_char) lhs, List.map find_char rhs)
 
   let validate (lhs, rhs) =
     let lhs_set = lhs |> List.flatten |> SS.of_list in
