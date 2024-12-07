@@ -75,6 +75,7 @@ module Rewrite : sig
   val free_indices : t -> SS.t
   val summation_indices : t -> SS.t
   val pp : t Fmt.t
+  val validate : t -> string option
 end = struct
   type t = Bindings.t * Group.t
   type indices = { free : SS.t; summation : SS.t }
@@ -87,6 +88,30 @@ end = struct
   let free_indices t = (indices t).free
   let summation_indices t = (indices t).summation
   let pp = Fmt.(box (pair ~sep:(any " -> ") Bindings.pp Group.pp))
+
+  let validate (lhs, rhs) =
+    let lhs_set = lhs |> List.flatten |> SS.of_list in
+    let rhs_set = rhs |> SS.of_list in
+    let rhs_extras = SS.diff rhs_set lhs_set in
+    if not (SS.is_empty rhs_extras) then
+      Some
+        Fmt.(
+          str
+            "Result indices must be a subset of the input indices ([@[%a@]] \
+             are not)"
+            (list ~sep:comma string) (SS.to_list rhs_extras))
+    else
+      let repeated_in_rhs =
+        rhs |> Counter.make |> Counter.to_list
+        |> List.filter (fun (_, n) -> n > 1)
+        |> List.map fst
+      in
+      if repeated_in_rhs <> [] then
+        Some
+          Fmt.(
+            str "Result indices must not be repeated ([@[%a@]])"
+              (list ~sep:comma string) repeated_in_rhs)
+      else None
 end
 
 module Find_matches_impl : sig

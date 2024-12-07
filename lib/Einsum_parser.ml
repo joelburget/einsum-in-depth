@@ -96,7 +96,11 @@ end = struct
         raise
           (Error (Fmt.str "Expected an arrow, got %a" (Fmt.list Token.pp) ts))
 
-  let parse_unsafe str = str |> Lex_impl.lex_unsafe |> rewrite_unsafe
+  let parse_unsafe str =
+    let candidate = str |> Lex_impl.lex_unsafe |> rewrite_unsafe in
+    match Einops.Rewrite.validate candidate with
+    | None -> candidate
+    | Some e -> raise (Error e)
 
   let parse str =
     match parse_unsafe str with x -> Ok x | exception Error e -> Error e
@@ -104,3 +108,17 @@ end
 
 include Lex_impl
 include Parse_impl
+
+let%expect_test "parse" =
+  let go str =
+    match parse str with
+    | Ok x -> Fmt.pr "%a\n" Einops.Rewrite.pp x
+    | Error e -> Fmt.pr "Error: %s\n" e
+  in
+  go "a,b->a";
+  [%expect {| a, b -> a |}];
+  go "a,b->c";
+  [%expect
+    {| Error: Result indices must be a subset of the input indices ([c] are not) |}];
+  go "i -> i i";
+  [%expect {| Error: Result indices must not be repeated ([i]) |}]
