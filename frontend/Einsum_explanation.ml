@@ -661,7 +661,7 @@ let explain container contraction_str path_str =
 
   let parsed_input_signal =
     S.map
-      (fun str -> str |> trim_before_colon |> Einsum_parser.parse)
+      (fun str -> str |> trim_before_colon |> Einsum_parser.Friendly.parse)
       current_input
   in
   let explanation_signal =
