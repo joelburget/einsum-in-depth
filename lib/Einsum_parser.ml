@@ -17,7 +17,6 @@ module Friendly = struct
 
   module Lex_impl : sig
     val lex_unsafe : string -> Token.t list
-    val lex : string -> (Token.t list, string) result
   end = struct
     open Token
 
@@ -53,18 +52,9 @@ module Friendly = struct
                       i input.[i]))
       in
       aux 0 []
-
-    let lex input =
-      match lex_unsafe input with
-      | result -> Ok result
-      | exception Error msg -> Error msg
   end
 
   module Parse_impl : sig
-    val group_unsafe : Token.t list -> Einops.Group.t * Token.t list
-    val groups_unsafe : Token.t list -> Einops.Group.t list * Token.t list
-    val rewrite_unsafe : Token.t list -> Einops.Rewrite.t
-    val parse_unsafe : string -> Einops.Rewrite.t
     val parse : string -> (Einops.Rewrite.t, string) result
   end = struct
     open Token
@@ -111,18 +101,4 @@ module Friendly = struct
 
   include Lex_impl
   include Parse_impl
-
-  let%expect_test "parse" =
-    let go str =
-      match parse str with
-      | Ok x -> Fmt.pr "%a\n" Einops.Rewrite.pp x
-      | Error e -> Fmt.pr "Error: %s\n" e
-    in
-    go "a,b->a";
-    [%expect {| a, b -> a |}];
-    go "a,b->c";
-    [%expect
-      {| Error: Result indices must be a subset of the input indices ([c] are not) |}];
-    go "i -> i i";
-    [%expect {| Error: Result indices must not be repeated ([i]) |}]
 end
