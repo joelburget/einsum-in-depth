@@ -62,11 +62,6 @@ let d str = Brr_svg.At.d (Jstr.of_string str)
 let viewbox str = Brr_svg.At.viewbox (Jstr.of_string str)
 let fill str = Brr_svg.At.fill (Jstr.of_string str)
 
-let parse_type str =
-  match Type_parser_runner.parse Type_parser.Incremental.lax str with
-  | Ok (ty, bracketed) -> Ok (ty, bracketed)
-  | Error (_location, indication, message) -> Error (indication, message)
-
 let fmt_txt : type a. (a, Format.formatter, unit, El.t) format4 -> a =
  fun fmt -> Fmt.kstr (fun s -> El.txt' s) fmt
 
