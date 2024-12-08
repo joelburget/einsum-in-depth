@@ -909,12 +909,87 @@ let tutorial container =
       current_input
   in
 
+  let code_preference_signal, code_preference_selector =
+    mk_code_preference_selector ()
+  in
+
+  let render_explanation rewrite code_preference =
+    let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
+    let get_color edge_name =
+      match Hashtbl.find_opt edge_attributes edge_name with
+      | None -> if Colors.prefers_dark () then "#fff" else "#000"
+      | Some { Colors.color; _ } -> color
+    in
+    let _framework_name, framework_code_name =
+      match code_preference with
+      | Einops.Numpy -> ("Numpy", "np")
+      | Pytorch -> ("Pytorch", "torch")
+    in
+
+    let pyloops = Einops.Explain.show_loops rewrite in
+    let python_code, code_ppf = make_formatter () in
+    Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp get_color) pyloops;
+    let frob_python_code, frob_code_ppf = make_formatter () in
+    Fmt.pf frob_code_ppf "%a@?"
+      (Einops.Pyloops.pp ~use_frob:code_preference get_color)
+      pyloops;
+    let free_indices = String_set.to_list pyloops.free_indices in
+    let summation_indices = String_set.to_list pyloops.summation_indices in
+    [
+      h2 [ txt' "Python Code" ];
+      p
+        [
+          txt'
+            "In outer loops, we iterate over all free indices to generate each \
+             output element (";
+          span (list_variables get_color free_indices);
+          txt' "), while in inner loops we iterate over all summation indices (";
+          span (list_variables get_color summation_indices);
+          txt'
+            ") to sum over each product term. First, here's equivalent, \
+             simplified (but slow, because it's not vectorized) Python code. \
+             We initialize an empty ";
+          code [ txt' "result" ];
+          txt'
+            " array and then iterate over every position in every axis, \
+             building up the result.";
+        ];
+      code_preference_selector;
+      div ~at:(classes "flex flex-row")
+        [
+          El.pre
+            [
+              code
+                ~at:(classes "before:content-[''] after:content-['']")
+                [ python_code ];
+            ];
+        ];
+      p
+        [
+          txt'
+            "In this next version of the code, we use the Frobenius product (";
+          code [ txt' (Fmt.str "%s.sum(inputs)" framework_code_name) ];
+          txt' ") instead of iterating over each summation index individually.";
+        ];
+      div ~at:(classes "flex flex-row")
+        [
+          El.pre
+            [
+              code
+                ~at:(classes "before:content-[''] after:content-['']")
+                [ frob_python_code ];
+            ];
+        ];
+    ]
+  in
+
   let explanation_signal =
-    S.l1
-      (function
-        | Ok _rewrite -> [ txt' "TODO: explanation" ]
+    S.l2
+      (fun rewrite code_preference ->
+        match rewrite with
+        | Ok rewrite -> render_explanation rewrite code_preference
         | Error msg -> [ div ~at:(classes "text-red-600") [ txt' msg ] ])
-      parsed_input_signal
+      parsed_input_signal code_preference_signal
   in
 
   let a href text =
