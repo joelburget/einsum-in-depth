@@ -682,7 +682,7 @@ let explain container contraction_str path_str =
         ~at:
           (classes
              "max-w-3xl mx-auto px-4 md:px-6 pt-6 md:pt-24 flex flex-col gap-4 \
-              dark:prose-invert prose prose-p:my-2 prose-pre:bg-gray-100 \
+              prose dark:prose-invert prose-p:my-2 prose-pre:bg-gray-100 \
               prose-pre:dark:bg-[#00000080] prose-pre:text-gray-900 \
               prose-pre:dark:text-[#d1d5db]")
         [
@@ -884,19 +884,412 @@ let tutorial container =
       [ txt' "Close" ]
   in
 
-  let example_1 = El.li [ El.txt' "Example 1" ] in
-  let example_2 = El.li [ El.txt' "Example 2" ] in
+  let clicked_op_in_text_e, send_clicked_op_in_text = E.create () in
+  let example str =
+    let elem = Brr.El.button ~at:(classes "underline") [ code [ txt' str ] ] in
+    let evt = Note_brr.Evr.on_el Ev.click (fun _ -> ()) elem in
+    (* XXX does this have the correct semantics? Event leak etc? *)
+    Logr.may_hold
+      E.(
+        log evt (fun () ->
+            send_clicked_op_in_text str;
+            (* TODO: this will always show the overlay if the screen becomes smaller *)
+            set_overlay_hidden false));
+    elem
+  in
+
+  let logger, c_input, current_input =
+    input' ~at:input_classes "" clicked_op_in_text_e
+  in
+  Logr.may_hold logger;
+
+  let parsed_input_signal =
+    S.map
+      (fun str -> str |> trim_before_colon |> Einsum_parser.Friendly.parse)
+      current_input
+  in
+
+  let explanation_signal =
+    S.l1
+      (function
+        | Ok _rewrite -> [ txt' "TODO: explanation" ]
+        | Error msg -> [ div ~at:(classes "text-red-600") [ txt' msg ] ])
+      parsed_input_signal
+  in
+
+  let a href text =
+    El.a
+      ~at:
+        [
+          At.v (Jstr.v "href") (Jstr.v href);
+          At.v (Jstr.v "target") (Jstr.v "_blank");
+        ]
+      [ txt' text ]
+  in
+
+  let content =
+    El.div
+      [
+        p
+          [
+            txt'
+              "Einsum notation is a compact and intuitive way to write many \
+               linear algebra operations: matrix multiplication, dot / \
+               Frobenius product, transpose, trace, as well as many more \
+               complex operations which don't have a name.";
+          ];
+        p
+          [
+            txt'
+              "Though Einsums are easy to read and to understand on the level \
+               of the shapes of the input and output tensors, I've found it \
+               hard to understand what an einsum expression is actually doing. \
+               That's why I've built this page, where we start from the basics \
+               and build up to understanding what complex expressions actually \
+               mean.";
+          ];
+        h2 [ txt' "Basic Operations" ];
+        p
+          [
+            txt'
+              "We'll start with five simple examples which illustrate all of \
+               the principles you need to understand einsums.";
+          ];
+        h3 [ txt' "1. identity" ];
+        p
+          [
+            txt'
+              "An einsum expression names the axes involved in an operation. ";
+            example "i -> i";
+            txt'
+              " takes a vector (the fact that a vector is one-dimensional \
+               corresponds to the single index, ";
+            code [ txt' "i" ];
+            txt' ") and returns the same vector. Likewise ";
+            example "i j -> i j";
+            txt' " is the identity operation on matrices, and ";
+            example "i j k -> i j k";
+            txt' " is the identity operation on 3-dimensional tensors.";
+          ];
+        h3 [ txt' "2. transpose" ];
+        p
+          [
+            txt' "The order vectors are written in matters. ";
+            example "i j -> j i";
+            txt' " swaps the positions of the ";
+            code [ txt' "i" ];
+            txt' " and ";
+            code [ txt' "j" ];
+            txt' " dimensions. ";
+            code [ txt' "i" ];
+            txt'
+              " changes from the row dimension to the column dimension, and \
+               likewise with ";
+            code [ txt' "j" ];
+            txt' ". So this operation is the transpose.";
+          ];
+        p
+          [
+            txt'
+              "As an aside, you may wonder whether there's a way to reverse \
+               the direction of a dimension. For example, reverse ";
+            code [ txt' "<1 2 3>" ];
+            txt' " to ";
+            code [ txt' "<3 2 1>" ];
+            txt' " But nope, einsum can't do this.";
+          ];
+        h3 [ txt' "3. sum" ];
+        p
+          [
+            txt'
+              "So far we've just rearranged tensors. You can also sum across a \
+               dimension by omitting it from the result. So ";
+            example "i ->";
+            txt' " sums a vector. ";
+            example "i j ->";
+            txt' " sums a matrix. Can you explain what ";
+            example "i j -> j";
+            txt' " and ";
+            example "i j -> i";
+            txt' " do?";
+          ];
+        h4 [ txt' "Terminology: free and summation indices" ];
+        p
+          [
+            txt' "In an example like ";
+            example "i j -> j";
+            txt' ", you may notice that the ";
+            code [ txt' "i" ];
+            txt' " and ";
+            code [ txt' "j" ];
+            txt' " indices act differently. ";
+            code [ txt' "j" ];
+            txt' " is an example of a free index, while ";
+            code [ txt' "i" ];
+            txt'
+              " is an example of a summed index. Free indices appear in the \
+               output specification, while summation indices don't.";
+          ];
+        p
+          [
+            txt'
+              "On a low level, free indices are associated with outer loops, \
+               one loop for each dimension of the output. While summation \
+               indices are associated with inner loops, which are run for each \
+               value in the output.";
+          ];
+        p
+          [
+            txt'
+              "On a higher level, you can think of the distinction being about \
+               which dimensions are preserved vs contracted.";
+          ];
+        h3 [ txt' "4. diagonal" ];
+        p
+          [
+            txt'
+              "If a dimension is repeated in an input tensor, we take a \
+               diagonal (";
+            example "i i -> i";
+            txt'
+              "). You can think of this as using the same variable to iterate \
+               over both dimensions (";
+            code [ txt' "[arr[i, i] for i in d_i]" ];
+            txt'
+              "). It's also possible to repeat an index three or more times (";
+            example "i i i -> i";
+            txt' ").";
+          ];
+        p
+          [
+            txt' "Repeating a dimension in an output (";
+            example "i -> i i";
+            txt' ") is invalid.";
+          ];
+        h3 [ txt' "5. element-wise product" ];
+        p
+          [
+            txt'
+              "There's one more basic operation. So far, we've been operating \
+               on a single tensor, but an einsum can act on any number of \
+               tensors. TODO explain the meaning of this";
+          ];
+        p [ example "i, i -> i" ];
+        h1 [ txt' "Three ways to think about contractions" ];
+        p
+          [
+            txt'
+              "There are at least three ways of thinking about what an einsum \
+               is doing, increasingly abstractly.";
+          ];
+        p [ txt' "First, on a low level (see Python code):" ];
+        El.ul
+          [
+            El.li
+              [
+                txt'
+                  "Classify each index as free (if it occurs in the output) or \
+                   summation (if not).";
+              ];
+            El.li
+              [
+                txt'
+                  "The free indices define the shape of the output (this gives \
+                   rise to a loop over each free index in the code).";
+              ];
+            El.li
+              [
+                txt'
+                  "For each cell in the output, loop over each summation \
+                   index. This gives a unique location in each input tensor. \
+                   You multiply the values in each tensor and add this product \
+                   to the current cell.";
+              ];
+          ];
+        p [ txt' "Second, on a higher level (see tensor diagram):" ];
+        El.ul
+          [
+            El.li
+              [
+                txt'
+                  "For each input tensor with repeated indices, extract the \
+                   values on the diagonal, producing a new tensor of smaller \
+                   dimension. Now each input tensor has uniquely named \
+                   dimensions.";
+              ];
+            El.li
+              [
+                txt'
+                  "Broadcast as necessary to make each input tensor the same \
+                   shape.";
+              ];
+            El.li
+              [
+                txt'
+                  "Pointwise multiply each tensor, giving a single tensor with \
+                   maximal dimension (it has one axis for each unique input \
+                   dimension).";
+              ];
+            El.li
+              [
+                txt'
+                  "Contract all summation indices (those which don't appear in \
+                   the output) by summing across them.";
+              ];
+          ];
+        p
+          [
+            txt'
+              "Finally, on the highest level, its best to think of dimensions \
+               as fulfilling three different roles:";
+          ];
+        El.ul
+          [
+            El.li [ txt' "Input to a computation" ];
+            El.li [ txt' "Output from a computation" ];
+            El.li
+              [ txt' "Different pieces of data being operated on in parallel" ];
+          ];
+        p
+          [
+            txt'
+              "Because tensors are just n-dimensional grids of numbers, we \
+               can't look at a tensor labeled ";
+            code [ txt' "a b c" ];
+            txt'
+              " and say what each dimension represents. But given a tensor \
+               labeled ";
+            code [ txt' "batch d_in d_out" ];
+            txt'
+              " we can make a pretty good guess. In fact, those three \
+               dimensions correspond to the three roles I just mentioned \
+               (batch is a typical name for different pieces of data processed \
+               in parallel).";
+          ];
+        p
+          [
+            txt'
+              "When you see two tensors contracted along some dimension, the \
+               typical interpretation is data flow, and the prototypical \
+               examples are the matrix-vector product (applying some \
+               transformation to data: ";
+            example "a b, a -> b";
+            txt' ") and matrix multiplication (composing two functions: ";
+            example "a b, b c -> a c";
+            txt' ").";
+          ];
+        p
+          [
+            txt'
+              "I suspect that in practice, people often approach tensor \
+               contractions with an \"if it compiles, it works\" attitude. You \
+               dump all of the tensors you need in, and tell einsum the shape \
+               you want out, and it tends to do the right thing.";
+          ];
+        h1 [ txt' "Examples" ];
+        p
+          [
+            txt'
+              "Now that we've defined what einsums are doing and given basic \
+               examples, here are some examples you might come across in \
+               practice.";
+          ];
+        h2 [ txt' "Linear Algebra" ];
+        El.ul
+          [
+            El.li [ example "a b, b c -> a c"; txt' " (matmul)" ];
+            El.li [ example "a b, b -> a"; txt' " (matrix-vector product)" ];
+            El.li [ example "i i ->"; txt' " (trace)" ];
+            El.li [ example "i j -> j"; txt' " (column sum)" ];
+            El.li [ example "i j -> i"; txt' " (row sum)" ];
+            El.li [ example "i, i ->"; txt' " (inner product)" ];
+            El.li [ example "i j, i j -> i j"; txt' " (Hadamard product)" ];
+            El.li [ example "i, j -> i j"; txt' " (outer product)" ];
+            El.li
+              [
+                example "i j, j k l -> i j";
+                txt' " (bilinear transformation, see ";
+                a "https://rockt.ai/2018/04/30/einsum" "Tim Rocktäschel's post";
+                txt' ")";
+              ];
+          ];
+        h2 [ txt' "Machine Learning" ];
+        El.ul
+          [
+            El.li
+              [
+                example "batch i j, batch j k -> batch i k";
+                txt' " (Batch matrix multiplication)";
+              ];
+            El.li
+              [
+                txt' "Attention:";
+                El.ul
+                  [
+                    El.li
+                      [
+                        example
+                          "batch head_index q_pos d_model, batch head_index \
+                           k_pos d_model -> batch head_index q_pos k_pos";
+                      ];
+                    El.li
+                      [
+                        example
+                          "batch pos head_index d_model, head_index d_model \
+                           d_head -> batch pos head_index d_head";
+                        txt' " (see ";
+                        a
+                          "https://github.com/TransformerLensOrg/TransformerLens/blob/3267a43ebcd7e42121fc1c568568165b073f4a9f/transformer_lens/utilities/attention.py"
+                          "source code";
+                        txt' ")";
+                      ];
+                  ];
+              ];
+          ];
+        h2 [ txt' "Other Resources" ];
+        El.ul
+          [
+            El.li
+              [
+                a
+                  "https://obilaniu6266h16.wordpress.com/2016/02/04/einstein-summation-in-numpy/"
+                  "Olexa Bilaniuk's Einstein Summation in Numpy";
+              ];
+            El.li
+              [
+                a "https://ajcr.net/Basic-guide-to-einsum/"
+                  "ajcr's A basic introduction to NumPy's einsum";
+              ];
+            El.li
+              [
+                a
+                  "https://stackoverflow.com/questions/72952005/how-is-numpy-einsum-implemented"
+                  "Stack Overflow: How is numpy.einsum implemented?";
+              ];
+            El.li
+              [
+                a "https://rockt.ai/2018/04/30/einsum"
+                  "Einsum is All you Need - Einstein Summation in Deep Learning";
+              ];
+          ];
+      ]
+  in
 
   (* Left pane: essay list *)
   let left_pane =
     El.div
       ~at:
-        (classes "flex-1 md:w-1/2 w-full overflow-y-auto bg-white border-r p-4")
-      [ El.h2 [ txt' "List of Examples" ]; El.ul [ example_1; example_2 ] ]
+        (classes
+           "flex-1 md:w-1/2 w-full overflow-y-auto bg-white border-r p-4 prose \
+            dark:prose-invert prose-p:my-2 prose-pre:bg-gray-100 \
+            prose-pre:dark:bg-[#00000080] prose-pre:text-gray-900 \
+            prose-pre:dark:text-[#d1d5db]")
+      [ content ]
   in
 
   (* On mobile, the right pane is a full-screen collapsible overlay.
      On desktop, it's displayed side-by-side. *)
+  let result_output = div [] in
   let right_pane =
     El.div
       ~at:
@@ -914,23 +1307,28 @@ let tutorial container =
           ~at:(classes "flex items-center justify-between border-b pb-2 mb-4")
           [ El.h2 [ txt' "Explanation" ]; close_button ];
         El.p [ txt' "Click on an example to see its explanation here." ];
+        div
+          [
+            txt' "Or enter your own contraction: ";
+            c_input;
+            info
+              (div
+                 [
+                   txt' "We use ";
+                   a "https://einops.rocks/" "einops notation";
+                   txt'
+                     ", not the notation built in to Numpy and Pytorch. Note \
+                      that einops notation supports parenthesis and ellipsis \
+                      notation, but we don't.";
+                 ]);
+          ];
+        result_output;
       ]
   in
 
+  Elr.def_children result_output explanation_signal;
+
   Elr.def_class (Jstr.v "translate-y-full") overlay_hidden_s right_pane;
-
-  (* Show overlay when example 1 is clicked *)
-  let _show_listener_1 =
-    Ev.listen Ev.click
-      (fun _ -> set_overlay_hidden false)
-      (El.as_target example_1)
-  in
-
-  let _show_listener_2 =
-    Ev.listen Ev.click
-      (fun _ -> set_overlay_hidden false)
-      (El.as_target example_2)
-  in
 
   (* Hide overlay when close button is clicked *)
   let _hide_listener =

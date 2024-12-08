@@ -26,6 +26,7 @@ let ( code,
       h1,
       h2,
       h3,
+      h4,
       nav ) =
   El.
     ( code,
@@ -47,6 +48,7 @@ let ( code,
       h1,
       h2,
       h3,
+      h4,
       nav )
 
 let embed_svg : Brr_svg.El.t -> Brr.El.t = Obj.magic
