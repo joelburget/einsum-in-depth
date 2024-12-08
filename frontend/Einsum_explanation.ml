@@ -1036,6 +1036,7 @@ let tutorial container =
       [ txt' text ]
   in
 
+  let code' text = code [ txt' text ] in
   let content =
     El.div
       [
@@ -1191,7 +1192,13 @@ let tutorial container =
               "There are at least three ways of thinking about what an einsum \
                is doing, increasingly abstractly.";
           ];
-        p [ txt' "First, on a low level (see Python code):" ];
+        p
+          [
+            txt'
+              "First, the lowest level, which is useful for defining the \
+               operational semantics of einsum but inefficient to compute (see \
+               Python code) and not very insightful:";
+          ];
         El.ul
           [
             El.li
@@ -1286,6 +1293,45 @@ let tutorial container =
             txt' ") and matrix multiplication (composing two functions: ";
             example "a b, b c -> a c";
             txt' ").";
+          ];
+        p
+          [
+            txt' "Unfortunately, when you see a matrix with type ";
+            code' "a b";
+            txt' ", that's not enough information to say whether ";
+            code' "a";
+            txt' " is an input and ";
+            code' "b";
+            txt'
+              " is an output or vice-versa. The convention in math is for that \
+               shape of matrix to be interpreted as a function ";
+            code' "b -> a";
+            txt'
+              ", and you multiply it on the left, but it sometimes happens \
+               that it's more convenient for ";
+            code' "a b";
+            txt' " to be interpreted as a function ";
+            code' "a -> b";
+            txt' " and multiplied on the right.";
+          ];
+        p
+          [
+            txt'
+              "In physics there's no ambiguity because physicists use special \
+               notation to distinguish outputs and inputs (or what they call \
+               co / contravariant). In physics, a contraction happens by \
+               pairing a covariant and a contravariant index. This ensures \
+               that you're connecting an output (or data) (covariant) to an \
+               input (contravariant).";
+          ];
+        p
+          [
+            txt'
+              "Above I classified dimensions in three ways: input, output, or \
+               different pieces of data. Using the co / contravariant lens, we \
+               can see that it's equally valid to think of just two \
+               categories, where inputs are contravariant, and both outputs \
+               and different pieces of data are covariant.";
           ];
         p
           [
