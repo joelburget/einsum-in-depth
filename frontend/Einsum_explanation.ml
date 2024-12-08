@@ -307,6 +307,32 @@ end = struct
     (elem, current_tab_s)
 end
 
+let mk_tensor_diagram_info () =
+  info
+    (div
+       [
+         h2 ~at:(classes "text-lg") [ txt' "Interpreting a Tensor Diagram" ];
+         p
+           [
+             txt'
+               "Each node in a tensor diagram represents a tensor (e.g a \
+                matrix or vector). Each line emanating from a tensor \
+                represents one of that tensor's dimensions. When two tensors \
+                are connected by a single line that represents a contraction \
+                (summation over the connected indices). Look through the \
+                examples to see how common operations correspond to tensor \
+                diagrams.";
+           ];
+         p
+           [
+             txt' "See ";
+             a "https://tensornetwork.org/diagrams/" "tensornetwork.org";
+             txt' " or ";
+             a "https://www.tensors.net/intro" "tensors.net";
+             txt' " for more.";
+           ];
+       ])
+
 let render_steps path rewrite code_preference_selector code_preference =
   let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
   let get_color edge_name =
@@ -325,32 +351,6 @@ let render_steps path rewrite code_preference_selector code_preference =
     match code_preference with
     | Einops.Numpy -> ("Numpy", "np")
     | Pytorch -> ("Pytorch", "torch")
-  in
-  let mk_tensor_diagram_info () =
-    info
-      (div
-         [
-           h2 ~at:(classes "text-lg") [ txt' "Interpreting a Tensor Diagram" ];
-           p
-             [
-               txt'
-                 "Each node in a tensor diagram represents a tensor (e.g a \
-                  matrix or vector). Each line emanating from a tensor \
-                  represents one of that tensor's dimensions. When two tensors \
-                  are connected by a single line that represents a contraction \
-                  (summation over the connected indices). Look through the \
-                  examples to see how common operations correspond to tensor \
-                  diagrams.";
-             ];
-           p
-             [
-               txt' "See ";
-               a "https://tensornetwork.org/diagrams/" "tensornetwork.org";
-               txt' " or ";
-               a "https://www.tensors.net/intro" "tensors.net";
-               txt' " for more.";
-             ];
-         ])
   in
   let steps =
     match contractions with
@@ -935,6 +935,38 @@ let tutorial container =
       pyloops;
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
+    let lhs, rhs = rewrite in
+    let valid_isometric_tensors =
+      List.for_all Isometric.Tensor.is_valid (rhs :: lhs)
+    in
+    let tab_selector_s, current_tab_s =
+      Tabs.make_tabs
+        ~default:(if valid_isometric_tensors then 1 else 0)
+        [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
+    in
+    let diagram_s =
+      current_tab_s
+      |> S.map (fun i ->
+             match i with
+             | 0 ->
+                 [
+                   Tensor_diagram.draw_einsum edge_attributes lhs rhs;
+                   mk_tensor_diagram_info ();
+                 ]
+             | _ ->
+                 if valid_isometric_tensors then
+                   [ Isometric.Scene.render ~edge_attributes [ (* TODO *) ] ]
+                 else
+                   [
+                     txt'
+                       "Isometric diagrams are only available for tensors of \
+                        dimension 3 or less.";
+                   ])
+    in
+    let tab_selector_parent, diagram_parent = (div [], div []) in
+    Elr.def_children tab_selector_parent
+      (tab_selector_s |> S.l1 (fun x -> [ x ]));
+    Elr.def_children diagram_parent diagram_s;
     [
       h2 [ txt' "Python Code" ];
       p
@@ -980,6 +1012,8 @@ let tutorial container =
                 [ frob_python_code ];
             ];
         ];
+      tab_selector_parent;
+      diagram_parent;
     ]
   in
 

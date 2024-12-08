@@ -224,3 +224,29 @@ let draw_binary_contraction edge_attributes l_tensor r_tensor
   let _ : Cytoscape.t = Cytoscape.create ~opts () in
 
   el
+
+let draw_einsum _edge_attributes _lhs _rhs =
+  let elements =
+    (* TODO *)
+    Elements.{ nodes = [||]; edges = [||] }
+  in
+
+  (* TODO *)
+  let zipped = [] in
+
+  let el =
+    Brr.El.div
+      ~at:
+        (Brr.At.
+           [ style (Jstr.v (Fmt.str "background-color: %s;" (bg_color ()))) ]
+        @ classes "mx-auto")
+      []
+  in
+  let opts =
+    Cytoscape.opts ~container:el ~elements
+      ~fixed:[| ("left", 150, 160); ("right", 350, 160) |]
+      ~zipped ()
+  in
+  let _ : Cytoscape.t = Cytoscape.create ~opts () in
+
+  el

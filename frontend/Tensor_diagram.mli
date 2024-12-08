@@ -9,3 +9,6 @@ val draw_binary_contraction :
   string list ->
   Binary_contraction.t ->
   Brr.El.t
+
+val draw_einsum :
+  Colors.edge_attributes -> string list list -> string list -> Brr.El.t
