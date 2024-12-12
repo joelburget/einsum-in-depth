@@ -202,9 +202,9 @@ end = struct
       [|
         ("container", Brr.El.to_jv container);
         ("elements", Elements.to_jv elements);
-        ("zoomingEnabled", Jv.of_bool false);
-        ("panningEnabled", Jv.of_bool false);
-        ("boxSelectionEnabled", Jv.of_bool false);
+        (* ("zoomingEnabled", Jv.of_bool false); *)
+        (* ("panningEnabled", Jv.of_bool false); *)
+        (* ("boxSelectionEnabled", Jv.of_bool false); *)
         ( "layout",
           Jv.obj
             [|

@@ -373,8 +373,8 @@ let render_steps path rewrite code_preference_selector code_preference =
                  match i with
                  | 0 ->
                      [
-                       Tensor_diagram.draw_unary_contraction edge_attributes
-                         contraction;
+                       (* Tensor_diagram.draw_unary_contraction edge_attributes *)
+                       (*   contraction; *)
                        mk_tensor_diagram_info ();
                      ]
                  | _ ->
@@ -471,8 +471,8 @@ let render_steps path rewrite code_preference_selector code_preference =
               |> S.map (function
                    | 0 ->
                        [
-                         Tensor_diagram.draw_binary_contraction edge_attributes
-                           l_tensor r_tensor contraction;
+                         (* Tensor_diagram.draw_binary_contraction edge_attributes *)
+                         (*   l_tensor r_tensor contraction; *)
                          mk_tensor_diagram_info ();
                        ]
                    | _ ->
@@ -940,8 +940,7 @@ let tutorial container =
       List.for_all Isometric.Tensor.is_valid (rhs :: lhs)
     in
     let tab_selector_s, current_tab_s =
-      Tabs.make_tabs
-        ~default:(if valid_isometric_tensors then 1 else 0)
+      Tabs.make_tabs ~default:0 (* (if valid_isometric_tensors then 1 else 0) *)
         [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
     in
     let diagram_s =
@@ -1435,7 +1434,7 @@ let tutorial container =
     El.div
       ~at:
         (classes
-           "flex-1 md:w-1/2 w-full overflow-y-auto bg-white border-r p-4 prose \
+           "flex-1 md:w-1/2 w-full overflow-y-auto border-r p-4 prose \
             dark:prose-invert prose-p:my-2 prose-pre:bg-gray-100 \
             prose-pre:dark:bg-[#00000080] prose-pre:text-gray-900 \
             prose-pre:dark:text-[#d1d5db]")
@@ -1452,10 +1451,10 @@ let tutorial container =
          (* On mobile: fixed overlay hidden by default (translate-y-full),
             can be toggled via JS to show/hide *)
          classes
-           "md:w-1/2 w-full overflow-y-auto p-4 bg-gray-50 md:static \
-            md:translate-y-0 md:relative fixed bottom-0 left-0 right-0 top-0 \
-            transform transition-transform duration-300 ease-in-out \
-            md:border-none border-t border-gray-300 z-50")
+           "md:w-1/2 w-full overflow-y-auto p-4 bg-gray-50 dark:bg-gray-800 \
+            md:static md:translate-y-0 md:relative fixed bottom-0 left-0 \
+            right-0 top-0 transform transition-transform duration-300 \
+            ease-in-out md:border-none border-t border-gray-300 z-50")
         (* translate-y-full *)
       [
         El.div
