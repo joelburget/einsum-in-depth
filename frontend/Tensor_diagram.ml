@@ -1,7 +1,7 @@
 open Tensor_playground.Einops
-
-(* open Cytoscape *)
 module String_set = Set.Make (String)
+
+let classes = Frontend_util.classes
 
 module Node : sig
   type node_type = Edge | Tensor
@@ -15,15 +15,11 @@ end = struct
   let to_jv { id; label; node_type } =
     Jv.obj
       [|
-        ( "data",
-          Jv.obj
-            [|
-              ("id", Jv.of_string id);
-              ("label", Jv.of_string label);
-              ( "type",
-                Jv.of_string
-                  (match node_type with Edge -> "edge" | Tensor -> "tensor") );
-            |] );
+        ("id", Jv.of_string id);
+        ("label", Jv.of_string label);
+        ( "type",
+          Jv.of_string
+            (match node_type with Edge -> "edge" | Tensor -> "tensor") );
       |]
 end
 
@@ -37,27 +33,16 @@ end = struct
   let to_jv { color; label; source; target } =
     Jv.obj
       [|
-        ( "data",
-          Jv.obj
-            [|
-              ("color", Jv.of_string color);
-              ("label", Jv.of_string label);
-              ("source", Jv.of_string source);
-              ("target", Jv.of_string target);
-            |] );
+        ("color", Jv.of_string color);
+        ("label", Jv.of_string label);
+        ("source", Jv.of_string source);
+        ("target", Jv.of_string target);
       |]
 end
 
-let classes = Frontend_util.classes
-
-(* let list_subtraction l1 l2 = List.filter (fun x -> not (List.mem x l2)) l1 *)
-(* let contracted_color () = if Colors.prefers_dark () then "#fff" else "#000" *)
-(* let node_color () = if Colors.prefers_dark () then "#fff" else "#000" *)
-let bg_color () = if Colors.prefers_dark () then "#00000080" else "#fff"
-
-let rec list_count needle = function
+let rec list_count target = function
   | [] -> 0
-  | x :: xs -> (if x = needle then 1 else 0) + list_count needle xs
+  | x :: xs -> (if x = target then 1 else 0) + list_count target xs
 
 let draw_einsum edge_attributes lhs rhs =
   let get_color name = (Hashtbl.find edge_attributes name).Colors.color in
@@ -92,7 +77,8 @@ let draw_einsum edge_attributes lhs rhs =
   let contraction_group_nodes =
     contracted_in_group |> String_set.to_list
     |> List.map (fun x ->
-           Node.{ id = Fmt.str "group-%s" x; label = ""; node_type = Edge })
+           let id = Fmt.str "group-%s" x in
+           Node.{ id; label = ""; node_type = Edge })
     |> Array.of_list
   in
 
@@ -119,24 +105,47 @@ let draw_einsum edge_attributes lhs rhs =
 
   List.iteri
     (fun source_n edge_names ->
+      let self_contracted' =
+        List.filter (fun x -> String_set.mem x self_contracted) edge_names
+        |> String_set.of_list |> String_set.to_list
+      in
+      (match self_contracted' with
+      | [] -> ()
+      | _ ->
+          let color =
+            match self_contracted' with [ x ] -> get_color x | _ -> ""
+          in
+          let node_id = Fmt.str "tensor-%d" source_n in
+          let edge =
+            Edge.
+              {
+                color;
+                label = Fmt.(str "%a" (list ~sep:comma string) self_contracted');
+                source = node_id;
+                target = node_id;
+              }
+          in
+          Queue.add edge edges);
+
       List.iter
         (fun name ->
-          let contract_in_pair = String_set.mem name contracted_in_pair in
-          if contract_in_pair && Hashtbl.mem pair_edges_seen name then ()
+          let contracted_in_pair' = String_set.mem name contracted_in_pair in
+          if
+            (contracted_in_pair' && Hashtbl.mem pair_edges_seen name)
+            || String_set.mem name self_contracted
+          then ()
           else
-            let target =
-              if String_set.mem name free then name
-              else if String_set.mem name self_contracted then
-                Fmt.str "tensor-%d" source_n
-              else if contract_in_pair then find_partner source_n name
-              else Fmt.str "group-%s" name
+            let target, label =
+              if String_set.mem name free then (name, "")
+              else if contracted_in_pair' then (find_partner source_n name, name)
+              else (Fmt.str "group-%s" name, "")
             in
-            if contract_in_pair then Hashtbl.add pair_edges_seen name ();
+            if contracted_in_pair' then Hashtbl.add pair_edges_seen name ();
             let edge =
               Edge.
                 {
                   color = get_color name;
-                  label = name;
+                  label;
                   source = Fmt.str "tensor-%d" source_n;
                   target;
                 }
@@ -147,14 +156,7 @@ let draw_einsum edge_attributes lhs rhs =
 
   let edges = edges |> Queue.to_seq |> Array.of_seq in
 
-  let el =
-    Brr.El.div
-      ~at:
-        (Brr.At.
-           [ style (Jstr.v (Fmt.str "background-color: %s;" (bg_color ()))) ]
-        @ classes "mx-auto")
-      []
-  in
+  let el = Brr.El.div ~at:(classes "mx-auto bg-white dark:bg-[#00000080]") [] in
 
   let _ =
     Jv.call Jv.global "renderTensorDiagram"
