@@ -380,8 +380,8 @@ let render_steps path rewrite code_preference_selector code_preference =
                  | _ ->
                      if valid_isometric_tensors then
                        [
-                         Isometric.Scene.render ~edge_attributes
-                           [ tensor; result_type ];
+                         Isometric.Scene.render ~edge_attributes [ tensor ]
+                           result_type;
                        ]
                      else
                        [
@@ -479,7 +479,7 @@ let render_steps path rewrite code_preference_selector code_preference =
                        if valid_isometric_tensors then
                          [
                            Isometric.Scene.render ~edge_attributes
-                             [ l_tensor; r_tensor; result_type ];
+                             [ l_tensor; r_tensor ] result_type;
                          ]
                        else
                          [
@@ -954,7 +954,7 @@ let tutorial container =
                  ]
              | _ ->
                  if valid_isometric_tensors then
-                   [ Isometric.Scene.render ~edge_attributes [ (* TODO *) ] ]
+                   [ Isometric.Scene.render ~edge_attributes lhs rhs ]
                  else
                    [
                      txt'

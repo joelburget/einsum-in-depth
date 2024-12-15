@@ -22,36 +22,6 @@ end
 
 include PP_var_impl
 
-module Counter : sig
-  type t = int SM.t
-
-  val make : string list -> t
-  val diff : t -> t -> t
-  val get : t -> string -> int
-  val key_set : t -> SS.t
-  val to_list : t -> (string * int) list
-end = struct
-  type t = int SM.t
-
-  let add_to_count map x =
-    SM.update x (function None -> Some 1 | Some n -> Some (n + 1)) map
-
-  let make = List.fold_left add_to_count SM.empty
-  let key_set m = SM.to_seq m |> Seq.map fst |> SS.of_seq
-  let to_list m = SM.bindings m
-
-  let diff a b =
-    let keys = SS.(union (key_set a) (key_set b) |> to_list) in
-    List.fold_left
-      (fun acc key ->
-        let a_val = SM.find_opt key a |> Option.value ~default:0 in
-        let b_val = SM.find_opt key b |> Option.value ~default:0 in
-        if a_val = b_val then acc else SM.add key (a_val - b_val) acc)
-      SM.empty keys
-
-  let get m k = SM.find_opt k m |> Option.value ~default:0
-end
-
 (** A Group is the set of indices of a tensor. *)
 module Group = struct
   type t = string list

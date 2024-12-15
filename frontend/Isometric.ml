@@ -1,4 +1,5 @@
-let classes = Frontend_util.classes
+open Tensor_playground
+
 let default_height = 320
 let default_width = 500
 let fill_color = "#ccc"
@@ -318,98 +319,74 @@ module Scene : sig
     ?width:int ->
     edge_attributes:Colors.edge_attributes ->
     string list list ->
+    string list ->
     Brr.El.t
 end = struct
+  let diagonalize tensor =
+    List.fold_left
+      (fun result label ->
+        if List.mem label result then result else label :: result)
+      [] tensor
+
   let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
-      ~edge_attributes tensors =
-    let container =
-      Brr.El.div
-        ~at:
-          (classes "mx-auto"
-          @ Brr.At.
-              [
-                style
-                  (Jstr.v
-                     (Fmt.str "height: %dpx; width: %dpx;" default_height
-                        default_width));
-              ])
-        []
-    in
-    let background_color =
-      if Colors.prefers_dark () then "#00000080" else "#fff"
-    in
-    let canvas =
-      Canvas.create
-        ~opts:
-          (Canvas.opts ~container ~background_color ~scale ~height ~width ())
-        ()
+      ~edge_attributes lhs rhs =
+    let grid_elems = Queue.create () in
+
+    let mk_canvas () =
+      let container = Brr.El.div [] in
+      let canvas =
+        Canvas.create ~opts:(Canvas.opts ~container ~scale ~height ~width ()) ()
+      in
+      (canvas, container)
     in
 
-    let n_tensors = List.length tensors in
-    let segment_width = 20. in
-    let array_midpoint = Float.of_int (n_tensors - 1) /. 2. in
+    (let diagonals_exist =
+       List.exists
+         (fun tensor ->
+           tensor |> Counter.make |> Counter.to_list
+           |> List.exists (fun (_, count) -> count > 1))
+         lhs
+     in
+     if diagonals_exist then (
+       Queue.add Brr.El.(div [ txt' "Diagonalize" ]) grid_elems;
+       List.iter
+         (fun tensor ->
+           let canvas, container = mk_canvas () in
+           (* TODO: show diagonal drawing *)
+           let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+           Canvas.add_child canvas tensor;
+           Queue.add container grid_elems)
+         lhs));
 
-    List.iteri
-      (fun i tensor ->
-        let left_pos = segment_width *. (array_midpoint -. Float.of_int i) in
-        Canvas.add_child canvas
-          (Tensor.create ~edge_attributes ~left:left_pos tensor))
-      tensors;
-    container
+    let lhs = List.map diagonalize lhs in
+
+    let tensors_match_shape =
+      List.(for_all (equal String.equal (hd lhs)) (tl lhs))
+    in
+    let broadcast_necessary = not tensors_match_shape in
+    if broadcast_necessary then (
+      Queue.add Brr.El.(div [ txt' "Broadcast" ]) grid_elems;
+      List.iter
+        (fun tensor ->
+          let canvas, container = mk_canvas () in
+          (* TODO: show shape updating *)
+          let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+          Canvas.add_child canvas tensor;
+          Queue.add container grid_elems)
+        lhs);
+
+    let need_pointwise = List.length lhs > 1 in
+    if need_pointwise then (
+      Queue.add Brr.El.(div [ txt' "Pointwise Multiply" ]) grid_elems;
+      Queue.add Brr.El.(div [ txt' "TODO" ]) grid_elems);
+
+    let lhs = match lhs with [ tensor ] -> tensor | _ -> assert false in
+
+    (* lhs should be one tensor at this point *)
+    let need_contraction = not (List.equal String.equal lhs rhs) in
+    if need_contraction then (
+      Queue.add Brr.El.(div [ txt' "Contract" ]) grid_elems;
+      Queue.add Brr.El.(div [ txt' "TODO" ]) grid_elems);
+
+    Brr.El.div (grid_elems |> Queue.to_seq |> List.of_seq)
 end
-
-(*
-module Binary_animation : sig
-  type t = Jv.t
-
-  val create :
-    l:string list ->
-    r:string list ->
-    result_type:string list ->
-    diag:string list ->
-    align:string list ->
-    contract:string list ->
-    t
-end = struct
-  (* Steps:
-     1. Take diagonals
-     2. Focus on just the dimensions we'll align for each tensor
-     3. Align the tensors
-     4. Contract the tensors
-  *)
-  type t = Jv.t
-
-  let create ~l ~r ~result_type ~diag ~align ~contract = failwith "TODO"
-end
-*)
-
-(*
-module Unary_animation : sig
-  type t = Jv.t
-
-  val create :
-    edge_attributes:Colors.edge_attributes ->
-    tensor:string list ->
-    diag:string list ->
-    contract:string list ->
-    (t * string) list
-end = struct
-  type t = Jv.t
-  (* Steps:
-     1. Take the diagonal
-     2. Contract the tensor
-  *)
-
-  let create ~edge_attributes ~tensor ~diag ~contract =
-    let original_tensor = Tensor.create ~edge_attributes ~left:0. tensor in
-    match diag with
-    | [] ->
-      let path = Path.create [] in
-      let scene = Scene.create [original_tensor; path] in
-        [ (scene, "Contract the tensor") ]
-    | _ ->
-        let scene1 = failwith "TODO" in
-        let scene2 = failwith "TODO" in
-        [ (scene1, "Take the diagonal"); (scene2, "Contract the tensor") ]
-end
-*)
