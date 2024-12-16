@@ -1230,3 +1230,57 @@ let%expect_test "intersperse" =
   [%expect {| [a, x, b] |}];
   go [ "a"; "b"; "c" ];
   [%expect {| [a, x, b, x, c] |}]
+
+module Steps : sig
+  type t = { diagonalized : string list list; broadcast : string list }
+
+  val make : Rewrite.t -> t
+end = struct
+  type t = { diagonalized : string list list; broadcast : string list }
+
+  let extract_diagonals tensor =
+    let rec go seen = function
+      | [] -> seen
+      | x :: xs -> if List.mem x seen then go seen xs else go (x :: seen) xs
+    in
+    go [] tensor |> List.rev
+
+  let%expect_test "extract_diagonals" =
+    let go tensor =
+      extract_diagonals tensor |> Fmt.(pr "[@[%a@]]@." (list ~sep:semi string))
+    in
+    go [ "a"; "b"; "c" ];
+    [%expect {| [a; b; c] |}];
+    go [ "a"; "b"; "a" ];
+    [%expect {| [a; b] |}];
+    go [ "a"; "b"; "c"; "a" ];
+    [%expect {| [a; b; c] |}]
+
+  let make_common_shape tensors rhs =
+    let index_set = String_set.of_list (List.flatten tensors) in
+    let compare x y =
+      match Index_helpers.(indexof x rhs, indexof y rhs) with
+      | None, None -> String.compare x y
+      | Some a, Some b -> compare a b
+      | Some _, None -> -1
+      | None, Some _ -> 1
+    in
+    List.sort compare (String_set.elements index_set)
+
+  let%expect_test "make_common_shape" =
+    let go tensors rhs =
+      make_common_shape tensors rhs
+      |> Fmt.(pr "[@[%a@]]@." (list ~sep:semi string))
+    in
+    go [ [ "a"; "b"; "c" ]; [ "a"; "b"; "a" ] ] [ "a"; "b"; "c" ];
+    [%expect {| [a; b; c] |}];
+    go [ [ "a"; "b"; "c" ]; [ "a"; "d"; "b" ] ] [ "a"; "b"; "c" ];
+    [%expect {| [a; b; c; d] |}];
+    go [ [ "a"; "b"; "c" ]; [ "a"; "b"; "a" ] ] [ "a"; "b" ];
+    [%expect {| [a; b; c] |}]
+
+  let make (lhs, rhs) =
+    let diagonalized = List.map extract_diagonals lhs in
+    let broadcast = make_common_shape diagonalized rhs in
+    { diagonalized; broadcast }
+end
