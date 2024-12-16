@@ -1451,10 +1451,11 @@ let tutorial container =
          (* On mobile: fixed overlay hidden by default (translate-y-full),
             can be toggled via JS to show/hide *)
          classes
-           "md:w-1/2 w-full overflow-y-auto p-4 bg-gray-50 dark:bg-gray-800 \
-            md:static md:translate-y-0 md:relative fixed bottom-0 left-0 \
-            right-0 top-0 transform transition-transform duration-300 \
-            ease-in-out md:border-none border-t border-gray-300 z-50")
+           "flex-1 md:w-1/2 w-full overflow-y-auto p-4 bg-gray-50 \
+            dark:bg-gray-800 md:static md:translate-y-0 md:relative fixed \
+            bottom-0 left-0 right-0 top-0 transform transition-transform \
+            duration-300 ease-in-out md:border-none border-t border-gray-300 \
+            z-50")
         (* translate-y-full *)
       [
         El.div
