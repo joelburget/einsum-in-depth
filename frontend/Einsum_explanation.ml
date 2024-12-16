@@ -899,7 +899,7 @@ let tutorial container =
   in
 
   let logger, c_input, current_input =
-    input' ~at:input_classes "" clicked_op_in_text_e
+    input' ~at:input_classes "a b, b c -> a c" clicked_op_in_text_e
   in
   Logr.may_hold logger;
 
@@ -939,35 +939,8 @@ let tutorial container =
     let valid_isometric_tensors =
       List.for_all Isometric.Tensor.is_valid (rhs :: lhs)
     in
-    let tab_selector_s, current_tab_s =
-      Tabs.make_tabs ~default:0 (* (if valid_isometric_tensors then 1 else 0) *)
-        [ { name = "Tensor Diagram" }; { name = "Isometric Diagram" } ]
-    in
-    let diagram_s =
-      current_tab_s
-      |> S.map (fun i ->
-             match i with
-             | 0 ->
-                 [
-                   Tensor_diagram.draw_einsum edge_attributes lhs rhs;
-                   mk_tensor_diagram_info ();
-                 ]
-             | _ ->
-                 if valid_isometric_tensors then
-                   [ Isometric.Scene.render ~edge_attributes lhs rhs ]
-                 else
-                   [
-                     txt'
-                       "Isometric diagrams are only available for tensors of \
-                        dimension 3 or less.";
-                   ])
-    in
-    let tab_selector_parent, diagram_parent = (div [], div []) in
-    Elr.def_children tab_selector_parent
-      (tab_selector_s |> S.l1 (fun x -> [ x ]));
-    Elr.def_children diagram_parent diagram_s;
     [
-      h2 [ txt' "Python Code" ];
+      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Low-level: Python Code" ];
       p
         [
           txt'
@@ -1011,8 +984,22 @@ let tutorial container =
                 [ frob_python_code ];
             ];
         ];
-      tab_selector_parent;
-      diagram_parent;
+      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Medium-level" ];
+      div
+        (if valid_isometric_tensors then
+           [ Isometric.Scene.render ~edge_attributes lhs rhs ]
+         else
+           [
+             txt'
+               "Isometric diagrams are only available if all tensors are of \
+                dimension 3 or less.";
+           ]);
+      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "High-level: tensor diagram" ];
+      div
+        [
+          Tensor_diagram.draw_einsum edge_attributes lhs rhs;
+          mk_tensor_diagram_info ();
+        ];
     ]
   in
 
@@ -1460,7 +1447,9 @@ let tutorial container =
       [
         El.div
           ~at:(classes "flex items-center justify-between border-b pb-2 mb-4")
-          [ El.h2 [ txt' "Explanation" ]; close_button ];
+          [
+            El.h2 ~at:(classes "text-2xl") [ txt' "Explanation" ]; close_button;
+          ];
         El.p [ txt' "Click on an example to see its explanation here." ];
         div
           [
