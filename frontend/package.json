@@ -18,7 +18,7 @@
     "parcel": "^2.13.2"
   },
   "scripts": {
-    "start": "parcel ../_build/default/frontend/index.html",
-    "build": "parcel build ../_build/default/frontend/index.html"
+    "start": "parcel index.html",
+    "build": "parcel build index.html"
   }
 }
