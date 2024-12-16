@@ -5,18 +5,31 @@ let classes = Frontend_util.classes
 
 module Node : sig
   type node_type = Edge | Tensor
-  type t = { id : string; label : string; node_type : node_type }
+
+  type t = {
+    id : string;
+    label : string;
+    node_type : node_type;
+    color : string;
+  }
 
   val to_jv : t -> Jv.t
 end = struct
   type node_type = Edge | Tensor
-  type t = { id : string; label : string; node_type : node_type }
 
-  let to_jv { id; label; node_type } =
+  type t = {
+    id : string;
+    label : string;
+    node_type : node_type;
+    color : string;
+  }
+
+  let to_jv { id; label; color; node_type } =
     Jv.obj
       [|
         ("id", Jv.of_string id);
         ("label", Jv.of_string label);
+        ("color", Jv.of_string color);
         ( "type",
           Jv.of_string
             (match node_type with Edge -> "edge" | Tensor -> "tensor") );
@@ -64,13 +77,14 @@ let draw_einsum edge_attributes lhs rhs =
     lhs
     |> List.mapi (fun i _x ->
            let id = Fmt.str "tensor-%d" i in
-           Node.{ id; label = ""; node_type = Tensor })
+           Node.{ id; label = ""; node_type = Tensor; color = "" })
     |> Array.of_list
   in
 
   let uncontracted_nodes =
     rhs
-    |> List.map (fun x -> Node.{ id = x; label = x; node_type = Edge })
+    |> List.map (fun x ->
+           Node.{ id = x; label = x; node_type = Edge; color = get_color x })
     |> Array.of_list
   in
 
@@ -78,7 +92,7 @@ let draw_einsum edge_attributes lhs rhs =
     contracted_in_group |> String_set.to_list
     |> List.map (fun x ->
            let id = Fmt.str "group-%s" x in
-           Node.{ id; label = ""; node_type = Edge })
+           Node.{ id; label = ""; node_type = Edge; color = "" })
     |> Array.of_list
   in
 
@@ -141,6 +155,7 @@ let draw_einsum edge_attributes lhs rhs =
               else (Fmt.str "group-%s" name, "")
             in
             if contracted_in_pair' then Hashtbl.add pair_edges_seen name ();
+            Brr.Console.log [ "edge"; name; get_color name ];
             let edge =
               Edge.
                 {

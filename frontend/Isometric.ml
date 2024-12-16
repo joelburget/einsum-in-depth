@@ -1,9 +1,11 @@
 open Tensor_playground
+module String_set = Set.Make (String)
 
 let default_height = 320
 let default_width = 500
 let fill_color = "#ccc"
 let isometric () = Jv.get Jv.global "isometric"
+let classes = Frontend_util.classes
 
 module Plane_view : sig
   type t = Jstr.t
@@ -115,7 +117,10 @@ end = struct
     o
 
   let jobj () = Jv.get (isometric ()) "IsometricText"
-  let create ?(opts = Jv.undefined) () = Jv.new' (jobj ()) [| opts |]
+
+  let create ?(opts = Jv.undefined) () =
+    Brr.Console.log [ "Text.create opts"; opts ];
+    Jv.new' (jobj ()) [| opts |]
 end
 
 module Group : sig
@@ -322,71 +327,102 @@ module Scene : sig
     string list ->
     Brr.El.t
 end = struct
-  let diagonalize tensor =
-    List.fold_left
-      (fun result label ->
-        if List.mem label result then result else label :: result)
-      [] tensor
-
   let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
       ~edge_attributes lhs rhs =
-    let grid_elems = Queue.create () in
+    let rows = Queue.create () in
+    let div, txt' = Brr.El.(div, txt') in
+    let Einops.Steps.{ diagonalized; broadcast } =
+      Einops.Steps.make (lhs, rhs)
+    in
 
     let mk_canvas () =
-      let container = Brr.El.div [] in
+      let container = div [] in
       let canvas =
         Canvas.create ~opts:(Canvas.opts ~container ~scale ~height ~width ()) ()
       in
       (canvas, container)
     in
 
-    (let diagonals_exist =
-       List.exists
-         (fun tensor ->
-           tensor |> Counter.make |> Counter.to_list
-           |> List.exists (fun (_, count) -> count > 1))
-         lhs
-     in
-     if diagonals_exist then (
-       Queue.add Brr.El.(div [ txt' "Diagonalize" ]) grid_elems;
-       List.iter
-         (fun tensor ->
-           let canvas, container = mk_canvas () in
-           (* TODO: show diagonal drawing *)
-           let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
-           Canvas.add_child canvas tensor;
-           Queue.add container grid_elems)
-         lhs));
-
-    let lhs = List.map diagonalize lhs in
+    let diagonals_exist =
+      List.exists2
+        (fun tensor diagonalized ->
+          not (List.equal String.equal tensor diagonalized))
+        lhs diagonalized
+    in
+    let elem =
+      if diagonals_exist then (
+        Queue.add (div [ txt' "Diagonalize" ]) rows;
+        let row =
+          List.map
+            (fun tensor ->
+              let canvas, container = mk_canvas () in
+              (* TODO: show diagonal drawing *)
+              let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+              Canvas.add_child canvas tensor;
+              container)
+            lhs
+        in
+        div ~at:(classes "flex flex-row") row)
+      else div ~at:(classes "flex flex-row") [ txt' "(no diagonals)" ]
+    in
+    Queue.add elem rows;
 
     let tensors_match_shape =
-      List.(for_all (equal String.equal (hd lhs)) (tl lhs))
+      List.(for_all (equal String.equal broadcast) diagonalized)
     in
     let broadcast_necessary = not tensors_match_shape in
-    if broadcast_necessary then (
-      Queue.add Brr.El.(div [ txt' "Broadcast" ]) grid_elems;
-      List.iter
-        (fun tensor ->
+    let elem =
+      if broadcast_necessary then (
+        Queue.add (div [ txt' "Broadcast" ]) rows;
+        let row =
+          List.map
+            (fun tensor ->
+              let canvas, container = mk_canvas () in
+              (* TODO: show shape updating *)
+              let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+              Canvas.add_child canvas tensor;
+              container)
+            diagonalized
+        in
+        div ~at:(classes "flex flex-row") row)
+      else div ~at:(classes "flex flex-row") [ txt' "(no diagonals)" ]
+    in
+    Queue.add elem rows;
+
+    let elem =
+      match diagonalized with
+      | [ _ ] -> div [ txt' "(only one tensor, no pointwise multiply)" ]
+      | _ ->
+          Queue.add (div [ txt' "Pointwise Multiply" ]) rows;
           let canvas, container = mk_canvas () in
-          (* TODO: show shape updating *)
-          let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+          let tensor = Tensor.create ~edge_attributes ~left:0. broadcast in
           Canvas.add_child canvas tensor;
-          Queue.add container grid_elems)
-        lhs);
+          div [ container ]
+    in
+    Queue.add elem rows;
 
-    let need_pointwise = List.length lhs > 1 in
-    if need_pointwise then (
-      Queue.add Brr.El.(div [ txt' "Pointwise Multiply" ]) grid_elems;
-      Queue.add Brr.El.(div [ txt' "TODO" ]) grid_elems);
+    let need_contraction = not (List.equal String.equal broadcast rhs) in
+    let elem =
+      if need_contraction then (
+        let axes_to_contract =
+          String_set.(diff (of_list broadcast) (of_list rhs) |> to_list)
+        in
+        Queue.add
+          (div
+             [
+               txt'
+                 Fmt.(
+                   str "Contract [@[%a@]]" (list ~sep:comma string)
+                     axes_to_contract);
+             ])
+          rows;
+        let canvas, container = mk_canvas () in
+        let tensor = Tensor.create ~edge_attributes ~left:0. rhs in
+        Canvas.add_child canvas tensor;
+        div [ container ])
+      else div [ txt' "(no contraction)" ]
+    in
+    Queue.add elem rows;
 
-    let lhs = match lhs with [ tensor ] -> tensor | _ -> assert false in
-
-    (* lhs should be one tensor at this point *)
-    let need_contraction = not (List.equal String.equal lhs rhs) in
-    if need_contraction then (
-      Queue.add Brr.El.(div [ txt' "Contract" ]) grid_elems;
-      Queue.add Brr.El.(div [ txt' "TODO" ]) grid_elems);
-
-    Brr.El.div (grid_elems |> Queue.to_seq |> List.of_seq)
+    div ~at:(classes "flex flex-col") (rows |> Queue.to_seq |> List.of_seq)
 end
