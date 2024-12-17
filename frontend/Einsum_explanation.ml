@@ -876,7 +876,7 @@ let explain container contraction_str path_str =
     ]
 
 let tutorial container =
-  let overlay_hidden_s, set_overlay_hidden = S.create true in
+  let overlay_hidden_s, set_overlay_hidden = S.create false in
 
   let close_button =
     El.button

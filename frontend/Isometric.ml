@@ -7,6 +7,7 @@ let fill_color = "#ccc"
 let isometric () = Jv.get Jv.global "isometric"
 let classes = Frontend_util.classes
 let duration = Jv.of_float 2.
+let array_max arr = Array.fold_left max min_float arr
 
 module EdgeAnimation = struct
   type edge = Height | Width
@@ -36,8 +37,6 @@ module Rectangle : sig
   type opts = Jv.t
 
   val opts :
-    ?height:float ->
-    ?width:float ->
     ?top:float ->
     ?left:float ->
     ?right:float ->
@@ -46,7 +45,8 @@ module Rectangle : sig
     unit ->
     opts
 
-  val create : ?opts:opts -> ?animate_edges:EdgeAnimation.t list -> unit -> t
+  val create :
+    ?opts:opts -> height:float array -> width:float array -> unit -> t
 end = struct
   type t = Jv.t
 
@@ -54,11 +54,8 @@ end = struct
 
   type opts = Jv.t
 
-  let opts ?(height = 0.) ?(width = 0.) ?top ?left ?right ?plane_view
-      ?fill_color () =
+  let opts ?top ?left ?right ?plane_view ?fill_color () =
     let o = Jv.obj [||] in
-    Jv.Float.set o "height" height;
-    Jv.Float.set o "width" width;
     Jv.Float.set_if_some o "top" top;
     Jv.Float.set_if_some o "left" left;
     Jv.Float.set_if_some o "right" right;
@@ -68,35 +65,33 @@ end = struct
 
   let jobj () = Jv.get (isometric ()) "IsometricRectangle"
 
-  let create ?(opts = Jv.undefined) ?(animate_edges = []) () =
-    let rect = Jv.new' (jobj ()) [| opts |] in
-    List.iter
-      (fun (edge, direction) ->
-        let height, width =
-          Jv.(get rect "height" |> to_float, get rect "width" |> to_float)
-        in
-        let edge_name, values =
-          match (edge, direction) with
-          | EdgeAnimation.Height, EdgeAnimation.Expand ->
-              ("height", [| 0.1; height |])
-          | Height, Contract -> ("height", [| height; 0.1 |])
-          | Width, Expand -> ("width", [| 0.1; width |])
-          | Width, Contract -> ("width", [| width; 0.1 |])
-        in
-        Brr.Console.log
-          [ "Rectangle.create"; edge_name; Jv.of_array Jv.of_float values ];
-        let anim_opts =
-          Jv.obj
-            [|
-              ("property", Jv.of_string edge_name);
-              ("duration", duration);
-              ("values", Jv.of_array Jv.of_float values);
-            |]
-        in
-        let _ = Jv.call rect "addAnimation" [| anim_opts |] in
-        ())
-      animate_edges;
-    rect
+  let add_anim side_name values face =
+    if Array.length values = 1 then face
+    else
+      (* Fmt.pr "@[add_anim: %s: [@[%a@]]@]@." side_name *)
+      (*   Fmt.(list ~sep:comma float) *)
+      (*   (Array.to_list values); *)
+      let anim_opts =
+        Jv.obj
+          [|
+            ("property", Jv.of_string side_name);
+            ("duration", duration);
+            ("values", Jv.of_array Jv.of_float values);
+          |]
+      in
+      Jv.call face "addAnimation" [| anim_opts |]
+
+  let create ?(opts = Jv.undefined) ~height ~width () =
+    Fmt.(
+      pr "@[Rectangle.create [%a] [%a]@]@." (array ~sep:semi float) height
+        (array ~sep:semi float) width);
+    (* weird hack: *)
+    Jv.Float.set opts "height"
+      (if Array.length height > 1 then 0. else height.(0));
+    Jv.Float.set opts "width" (if Array.length width > 1 then 0. else width.(0));
+    (* end weird hack *)
+    Jv.new' (jobj ()) [| opts |]
+    |> add_anim "height" height |> add_anim "width" width
 end
 
 module Point : sig
@@ -127,6 +122,10 @@ end = struct
   let create ?(stroke_color = "red") path_start path_end =
     let opts = Jv.obj [| ("strokeColor", Jv.of_string stroke_color) |] in
     let piece = Jv.new' (jobj ()) [| opts |] in
+    (* Fmt.( *)
+    (*   pr "Path.create: %f, %f, %f -> %f, %f, %f@." path_start.top *)
+    (*     path_start.left path_start.right path_end.top path_end.left *)
+    (*     path_end.right); *)
     let start =
       Fmt.str "M%f %f %f L%f %f %f" path_start.left path_start.right
         path_start.top path_start.left path_start.right path_start.top
@@ -188,10 +187,7 @@ end = struct
     o
 
   let jobj () = Jv.get (isometric ()) "IsometricText"
-
-  let create ?(opts = Jv.undefined) () =
-    Brr.Console.log [ "Text.create opts"; opts ];
-    Jv.new' (jobj ()) [| opts |]
+  let create ?(opts = Jv.undefined) () = Jv.new' (jobj ()) [| opts |]
 end
 
 module Group : sig
@@ -261,139 +257,115 @@ end = struct
   let add_child o child = ignore @@ Jv.call o "addChild" [| child |]
 end
 
-let filter_map f lst =
-  List.fold_left
-    (fun acc x -> match f x with Some x -> x :: acc | None -> acc)
-    [] lst
+(* let filter_map f lst = *)
+(*   List.fold_left *)
+(*     (fun acc x -> match f x with Some x -> x :: acc | None -> acc) *)
+(*     [] lst *)
 
 module Cube : sig
   type t = Jv.t
-  type labels = string * string * string
 
   val create :
-    ?animate_edges:(string * EdgeAnimation.direction) list ->
+    height:string * float array ->
+    width:string * float array ->
+    depth:string * float array ->
     draw_diag:bool ->
-    edge_attributes:Colors.edge_attributes ->
-    left:float ->
+    edge_colors:Colors.edge_colors ->
     fill_color:string ->
-    labels:labels ->
     unit ->
     t
 end = struct
   type t = Jv.t
-  type labels = string * string * string
 
-  let create ?(animate_edges = []) ~draw_diag ~edge_attributes ~left:left_pos
-      ~fill_color ~labels:(a, b, c) () =
-    let get_length i =
-      let label = match i with 0 -> a | 1 -> b | 2 -> c | _ -> assert false in
-      (Hashtbl.find edge_attributes label).Colors.length
-    in
-    let l_depth, r_depth, height = (get_length 0, get_length 1, get_length 2) in
+  let create ~height:(height_label, height) ~width:(width_label, width)
+      ~depth:(depth_label, depth) ~draw_diag ~edge_colors ~fill_color () =
+    let max_height = array_max height in
+    let max_width = array_max width in
+    let max_depth = array_max depth in
     let faces =
       Rectangle.
         [
-          create
-            ~animate_edges:
-              (filter_map
-                 EdgeAnimation.(
-                   fun (name, direction) ->
-                     if name = a then Some (Height, direction)
-                     else if name = b then Some (Width, direction)
-                     else None)
-                 animate_edges)
+          create ~height:width ~width:depth
             ~opts:
-              (opts ~height:l_depth ~width:r_depth ~top:height ~fill_color
-                 ~plane_view:Plane_view.top ())
+              (opts ~top:max_height ~fill_color ~plane_view:Plane_view.top ())
             ();
-          create
-            ~animate_edges:
-              (filter_map
-                 EdgeAnimation.(
-                   fun (name, direction) ->
-                     if name = a then Some (Width, direction)
-                     else if name = c then Some (Height, direction)
-                     else None)
-                 animate_edges)
+          create ~height ~width
             ~opts:
-              (opts ~height ~width:l_depth ~right:r_depth ~fill_color
-                 ~plane_view:Plane_view.front ())
+              (opts ~right:max_depth ~fill_color ~plane_view:Plane_view.front ())
             ();
-          create
-            ~animate_edges:
-              (filter_map
-                 EdgeAnimation.(
-                   fun (name, direction) ->
-                     if name = b then Some (Width, direction)
-                     else if name = c then Some (Height, direction)
-                     else None)
-                 animate_edges)
+          create ~height ~width:depth
             ~opts:
-              (opts ~height ~width:r_depth ~left:l_depth ~fill_color
-                 ~plane_view:Plane_view.side ())
+              (opts ~left:max_width ~fill_color ~plane_view:Plane_view.side ())
             ();
         ]
     in
     let labels =
-      [ a; b; c ]
-      |> List.mapi (fun i label ->
-             let Colors.{ color; length = _ } =
-               Hashtbl.find edge_attributes label
-             in
-             let top, left, right =
-               match i with
-               | 0 -> (* top left *) (height *. 1.25, l_depth *. 0.65, 0.)
-               | 1 ->
-                   (* top right *)
-                   (height *. 1.25, 0., r_depth *. 0.5)
-               | 2 -> (* left *) (height *. 0.5, l_depth *. 1.2, 0.)
-               | _ -> assert false
-             in
-             Text.create
-               ~opts:(Text.opts ~top ~left ~right ~fill_color:color label)
-               ())
+      [
+        Text.create
+          ~opts:
+            (Text.opts ~top:(max_height *. 1.25) ~left:(max_width *. 0.65)
+               ~right:0.
+               ~fill_color:(Hashtbl.find edge_colors height_label)
+               height_label)
+          ();
+        Text.create
+          ~opts:
+            (Text.opts ~top:(max_height *. 1.25) ~left:0.
+               ~right:(max_depth *. 0.5)
+               ~fill_color:(Hashtbl.find edge_colors depth_label)
+               depth_label)
+          ();
+        Text.create
+          ~opts:
+            (Text.opts ~top:(max_height *. 0.5) ~left:(max_width *. 1.2)
+               ~right:0.
+               ~fill_color:(Hashtbl.find edge_colors width_label)
+               width_label)
+          ();
+      ]
     in
+    (* Fmt.( *)
+    (*   pr "Cube.create max_height: %f, max_width: %f, max_depth: %f@." max_height *)
+    (*     max_width max_depth); *)
     let paths =
       if draw_diag then
-        if a = b && b = c then
+        if height_label = width_label && width_label = depth_label then
           [
             Path.create
-              Point.{ left = 0.; right = l_depth; top = height }
-              Point.{ left = r_depth; right = 0.; top = 0. };
+              Point.{ left = 0.; right = max_width; top = max_height }
+              Point.{ left = max_depth; right = 0.; top = 0. };
           ] (* TODO: really these three should animate planes *)
-        else if a = b then
+        else if height_label = width_label then
           [
             Path.create
-              Point.{ left = 0.; right = l_depth; top = height }
-              Point.{ left = r_depth; right = 0.; top = height };
+              Point.{ left = 0.; right = max_width; top = max_height }
+              Point.{ left = max_depth; right = 0.; top = max_height };
           ]
-        else if a = c then
+        else if height_label = depth_label then
           [
             Path.create
-              Point.{ left = r_depth; right = l_depth; top = 0. }
-              Point.{ left = r_depth; right = 0.; top = height };
+              Point.{ left = max_depth; right = max_width; top = 0. }
+              Point.{ left = max_depth; right = 0.; top = max_height };
           ]
-        else if b = c then
+        else if width_label = depth_label then
           [
             Path.create
-              Point.{ left = 0.; right = l_depth; top = 0. }
-              Point.{ left = r_depth; right = l_depth; top = height };
+              Point.{ left = 0.; right = max_width; top = 0. }
+              Point.{ left = max_depth; right = max_width; top = max_height };
           ]
         else []
       else []
     in
-    Group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ labels @ paths)
+    Group.create (faces @ labels @ paths)
 end
 
 module Tensor : sig
   type t = Jv.t
 
   val create :
-    ?animate_edges:(string * EdgeAnimation.direction) list ->
     draw_diag:bool ->
-    edge_attributes:Colors.edge_attributes ->
-    left:float ->
-    string list ->
+    edge_colors:Colors.edge_colors ->
+    (string * float array) list ->
     t
 
   val is_valid : string list -> bool
@@ -404,80 +376,74 @@ end = struct
     | [] | [ _ ] | [ _; _ ] | [ _; _; _ ] -> true
     | _ -> false
 
-  let create ?(animate_edges = []) ~draw_diag ~edge_attributes ~left = function
-    | [ dim1 ] ->
-        let Colors.{ length = l_depth; color } =
-          Hashtbl.(find edge_attributes dim1)
-        in
+  let create ~draw_diag ~edge_colors = function
+    | [ (dim1, height) ] ->
+        let color = Hashtbl.(find edge_colors dim1) in
         let children =
           [
             Rectangle.create
-              ~animate_edges:
-                (filter_map
-                   (fun (name, direction) ->
-                     if name = dim1 then Some (EdgeAnimation.Height, direction)
-                     else None)
-                   animate_edges)
-              ~opts:
-                (Rectangle.opts ~height:l_depth ~width:0.
-                   ~plane_view:Plane_view.top ~fill_color ())
+              ~opts:(Rectangle.opts ~plane_view:Plane_view.top ~fill_color ())
+              ~height
+              ~width:(Array.map (fun _ -> 0.) height)
               ();
             (* Path *)
             Text.create
               ~opts:
-                (Text.opts ~left:(l_depth *. 0.5) ~right:(-1.4)
-                   ~fill_color:color dim1)
+                (Text.opts
+                   ~left:(array_max height *. 0.5)
+                   ~right:(-1.4) ~fill_color:color dim1)
               ();
           ]
         in
-        Group.create ~left ~top:(left /. 2.) children
-    | [ dim1; dim2 ] ->
-        let Colors.(
-              ( { length = l_depth; color = color1 },
-                { length = r_depth; color = color2 } )) =
-          Hashtbl.(find edge_attributes dim1, find edge_attributes dim2)
+        Group.create children
+    | [ (dim1, height); (dim2, width) ] ->
+        let color1, color2 =
+          Hashtbl.(find edge_colors dim1, find edge_colors dim2)
         in
+        (* Fmt.( *)
+        (*   pr "@[Tensor.create rectangle (%s, [%a]) (%s, [%a])@]@." dim1 *)
+        (*     (array ~sep:semi float) height dim2 (array ~sep:semi float) width); *)
         let children =
           [
             Rectangle.create
-              ~animate_edges:
-                (filter_map
-                   (fun (name, direction) ->
-                     if name = dim1 then Some (EdgeAnimation.Height, direction)
-                     else if name = dim2 then Some (Width, direction)
-                     else None)
-                   animate_edges)
-              ~opts:
-                (Rectangle.opts ~height:l_depth ~width:r_depth
-                   ~plane_view:Plane_view.top ~fill_color ())
-              ();
+              ~opts:(Rectangle.opts ~plane_view:Plane_view.top ~fill_color ())
+              ~height ~width ();
             Text.create
               ~opts:
-                (Text.opts ~left:(l_depth *. 0.5) ~right:(r_depth *. -0.5)
+                (Text.opts
+                   ~left:(array_max height *. 0.5)
+                   ~right:(array_max width *. -0.5)
                    ~fill_color:color1 dim1)
               ();
             Text.create
               ~opts:
-                (Text.opts ~left:(l_depth *. -0.5) ~right:(r_depth *. 0.5)
+                (Text.opts
+                   ~left:(array_max height *. -0.5)
+                   ~right:(array_max width *. 0.5)
                    ~fill_color:color2 dim2)
               ();
           ]
         in
         let paths =
+          (* Fmt.( *)
+          (*   pr "Tensor.create left: %f, right: %f@." (array_max height) *)
+          (*     (array_max width)); *)
           if draw_diag && dim1 = dim2 then
             [
               Path.create Point.zero
-                Point.{ left = r_depth; right = l_depth; top = 0. };
+                Point.
+                  { left = array_max height; right = array_max width; top = 0. };
             ]
           else []
         in
-        Group.create ~left ~top:(left /. 2.) (children @ paths)
-    | [ a; b; c ] ->
-        Cube.create ~animate_edges ~draw_diag ~edge_attributes ~left ~fill_color
-          ~labels:(a, b, c) ()
-    | [] -> Text.create ~opts:(Text.opts ~left ~top:(left /. 2.) "(scalar)") ()
+        Group.create (children @ paths)
+    | [ height; width; depth ] ->
+        Cube.create ~height ~width ~depth ~draw_diag ~edge_colors ~fill_color ()
+    | [] -> Text.create ~opts:(Text.opts "(scalar)") ()
     | invalid ->
-        failwith (Fmt.str "Invalid tensor: %a" Fmt.(list string) invalid)
+        failwith
+          Fmt.(
+            str "Invalid tensor: %a" (list (pair string (array float))) invalid)
 end
 
 module Scene : sig
@@ -492,22 +458,28 @@ module Scene : sig
 end = struct
   let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
       ~edge_attributes lhs rhs =
+    let edge_colors =
+      edge_attributes |> Hashtbl.to_seq
+      |> Seq.map (fun (k, v) -> (k, v.Colors.color))
+      |> Hashtbl.of_seq
+    in
+    let get_length label = (Hashtbl.find edge_attributes label).length in
     let rows = Queue.create () in
     let div, txt' = Brr.El.(div, txt') in
     let Einops.Steps.{ diagonalized; broadcast } =
       Einops.Steps.make (lhs, rhs)
     in
-    Fmt.pr "@[lhs: %a,@ rhs: %a@]@."
-      Fmt.(brackets (list (brackets (list string))))
-      lhs
-      Fmt.(brackets (list string))
-      rhs;
-    Fmt.pr "@[broadcast: %a,@ diagonalized: %a@]@."
-      Fmt.(brackets (list string))
-      broadcast
-      Fmt.(brackets (list (brackets (list string))))
-      diagonalized;
 
+    (* Fmt.pr "@[lhs: %a,@ rhs: %a@]@." *)
+    (*   Fmt.(brackets (list (brackets (list string)))) *)
+    (*   lhs *)
+    (*   Fmt.(brackets (list string)) *)
+    (*   rhs; *)
+    (* Fmt.pr "@[broadcast: %a,@ diagonalized: %a@]@." *)
+    (*   Fmt.(brackets (list string)) *)
+    (*   broadcast *)
+    (*   Fmt.(brackets (list (brackets (list string)))) *)
+    (*   diagonalized; *)
     let mk_canvas () =
       let container = div [] in
       let canvas =
@@ -515,6 +487,20 @@ end = struct
       in
       (canvas, container)
     in
+
+    let row =
+      List.map
+        (fun tensor ->
+          let canvas, container = mk_canvas () in
+          let tensor =
+            Tensor.create ~draw_diag:true ~edge_colors
+              (List.map (fun label -> (label, [| get_length label |])) tensor)
+          in
+          Canvas.add_child canvas tensor;
+          container)
+        lhs
+    in
+    Queue.add (div ~at:(classes "flex flex-row") row) rows;
 
     let diagonals_exist =
       List.exists2
@@ -530,7 +516,10 @@ end = struct
             (fun tensor ->
               let canvas, container = mk_canvas () in
               let tensor =
-                Tensor.create ~draw_diag:true ~edge_attributes ~left:0. tensor
+                Tensor.create ~draw_diag:true ~edge_colors
+                  (List.map
+                     (fun label -> (label, [| get_length label |]))
+                     tensor)
               in
               Canvas.add_child canvas tensor;
               container)
@@ -560,49 +549,46 @@ end = struct
         diagonalized (false, [])
     in
 
-    let elem =
-      if reorder_necessary then (
-        Queue.add (div [ txt' "Reorder" ]) rows;
-        let row =
-          List.map
-            (fun reordered_tensor ->
-              let canvas, container = mk_canvas () in
-              let tensor =
-                Tensor.create ~draw_diag:false ~edge_attributes ~left:0.
-                  reordered_tensor
-              in
-              Canvas.add_child canvas tensor;
-              container)
-            reordered
-        in
-        div ~at:(classes "flex flex-row") row)
-      else div ~at:(classes "flex flex-row") [ txt' "(no reorder)" ]
-    in
-    Queue.add elem rows;
-
     let tensors_match_shape =
       List.(for_all (equal String.equal broadcast) reordered)
     in
     let broadcast_necessary = not tensors_match_shape in
     let elem =
-      if broadcast_necessary then (
-        Queue.add (div [ txt' "Broadcast" ]) rows;
+      if reorder_necessary || broadcast_necessary then (
+        Queue.add (div [ txt' "Reorder and Broadcast" ]) rows;
         let row =
           List.map
             (fun diag_tensor ->
               let canvas, container = mk_canvas () in
               let animate_edges =
                 List.filter (fun x -> not (List.mem x diag_tensor)) broadcast
-                |> List.map (fun x -> (x, EdgeAnimation.Expand))
               in
-              Fmt.(
-                pr "diag_tensor: [%a], broadcast: [%a], animate_edges: [%a]@."
-                  (list string) diag_tensor (list string) broadcast
-                  (list string)
-                  (List.map (fun (x, _) -> x) animate_edges));
+              (* Fmt.( *)
+              (*   pr *)
+              (* "@[diag_tensor: [%a], broadcast: [%a], animate_edges: \ *)
+                 (*      [%a]@]@." *)
+              (*     (list string) diag_tensor (list string) broadcast *)
+              (*     (list string) animate_edges); *)
+              let axis_spec =
+                List.map
+                  (fun label ->
+                    let base_length = get_length label in
+                    let lengths =
+                      if List.mem label animate_edges then [| 0.; base_length |]
+                      else [| base_length |]
+                    in
+                    (label, lengths))
+                  broadcast
+              in
+              (* Fmt.( *)
+              (*   pr "broadcast axis_spec: %a@." *)
+              (*     (list ~sep:semi *)
+              (*        (parens *)
+              (*           (pair ~sep:comma string *)
+              (*              (brackets (array ~sep:semi float))))) *)
+              (*     axis_spec); *)
               let tensor =
-                Tensor.create ~draw_diag:false ~animate_edges ~edge_attributes
-                  ~left:0. diag_tensor
+                Tensor.create ~draw_diag:false ~edge_colors axis_spec
               in
               Canvas.add_child canvas tensor;
               container)
@@ -620,7 +606,10 @@ end = struct
           Queue.add (div [ txt' "Pointwise Multiply" ]) rows;
           let canvas, container = mk_canvas () in
           let tensor =
-            Tensor.create ~draw_diag:false ~edge_attributes ~left:0. broadcast
+            Tensor.create ~draw_diag:false ~edge_colors
+              (List.map
+                 (fun label -> (label, [| get_length label |]))
+                 broadcast)
           in
           Canvas.add_child canvas tensor;
           div [ container ]
@@ -643,13 +632,25 @@ end = struct
              ])
           rows;
         let canvas, container = mk_canvas () in
-        let animate_edges =
-          List.map (fun x -> (x, EdgeAnimation.Contract)) axes_to_contract
+        let axis_spec =
+          List.map
+            (fun label ->
+              let base_length = get_length label in
+              let lengths =
+                if List.mem label axes_to_contract then [| base_length; 0. |]
+                else [| base_length |]
+              in
+              (label, lengths))
+            broadcast
         in
-        let tensor =
-          Tensor.create ~draw_diag:false ~animate_edges ~edge_attributes
-            ~left:0. broadcast
-        in
+        (* Fmt.( *)
+        (*   pr "contraction axis_spec: %a@." *)
+        (*     (list ~sep:semi *)
+        (*        (parens *)
+        (*           (pair ~sep:comma string (brackets (array ~sep:semi float))))) *)
+        (*     axis_spec); *)
+        let tensor = Tensor.create ~draw_diag:false ~edge_colors axis_spec in
+
         Canvas.add_child canvas tensor;
         div [ container ])
       else div [ txt' "(no contraction)" ]

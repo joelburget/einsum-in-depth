@@ -37,6 +37,7 @@ let get_edge_attributes i =
   else { color = (if prefers_dark () then "#000" else "#fff"); length = 4. }
 
 type edge_attributes = (string, attributes) Hashtbl.t
+type edge_colors = (string, string) Hashtbl.t
 
 let assign_edge_attributes tensors =
   let edge_attributes = Hashtbl.create 10 in
