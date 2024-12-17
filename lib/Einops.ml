@@ -1277,10 +1277,26 @@ end = struct
     go [ [ "a"; "b"; "c" ]; [ "a"; "d"; "b" ] ] [ "a"; "b"; "c" ];
     [%expect {| [a; b; c; d] |}];
     go [ [ "a"; "b"; "c" ]; [ "a"; "b"; "a" ] ] [ "a"; "b" ];
-    [%expect {| [a; b; c] |}]
+    [%expect {| [a; b; c] |}];
+    go [ [ "a"; "b" ] ] [ "a" ];
+    [%expect {| [a; b] |}]
 
   let make (lhs, rhs) =
     let diagonalized = List.map extract_diagonals lhs in
     let broadcast = make_common_shape diagonalized rhs in
     { diagonalized; broadcast }
+
+  let%expect_test "make" =
+    let go lhs rhs =
+      let { diagonalized; broadcast } = make (lhs, rhs) in
+      Fmt.pr "@[diagonalized: [@[%a@]],@ broadcast: [@[%a@]]@]@."
+        Fmt.(list ~sep:semi (brackets (list ~sep:semi string)))
+        diagonalized
+        Fmt.(list ~sep:semi string)
+        broadcast
+    in
+    go [ [ "a"; "b" ] ] [ "a" ];
+    [%expect {| diagonalized: [[a; b]], broadcast: [a; b] |}];
+    go [ [ "a"; "b" ] ] [ "b" ];
+    [%expect {| diagonalized: [[a; b]], broadcast: [b; a] |}]
 end

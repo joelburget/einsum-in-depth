@@ -1222,8 +1222,8 @@ let tutorial container =
             El.li
               [
                 txt'
-                  "Broadcast as necessary to make each input tensor the same \
-                   shape.";
+                  "Broadcast and reorder as necessary to make each input \
+                   tensor the same shape.";
               ];
             El.li
               [

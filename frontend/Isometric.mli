@@ -1,3 +1,9 @@
+module EdgeAnimation : sig
+  type edge = Height | Width
+  type direction = Expand | Contract
+  type t = edge * direction
+end
+
 module Tensor : sig
   type t = Jv.t
 
@@ -9,6 +15,7 @@ module Scene : sig
     ?scale:float ->
     ?height:int ->
     ?width:int ->
+    (* ?animate_edges:(string * EdgeAnimation.direction) list -> *)
     edge_attributes:Colors.edge_attributes ->
     string list list ->
     string list ->
