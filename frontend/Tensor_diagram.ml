@@ -53,19 +53,20 @@ end = struct
       |]
 end
 
-let rec list_count target = function
+(** The number of lists this target appears in *)
+let rec nested_list_count target = function
   | [] -> 0
-  | x :: xs -> (if x = target then 1 else 0) + list_count target xs
+  | lst :: lsts ->
+      (if List.mem target lst then 1 else 0) + nested_list_count target lsts
 
 let draw_einsum edge_attributes lhs rhs =
   let get_color name = (Hashtbl.find edge_attributes name).Colors.color in
 
   let Rewrite.{ free; summation } = Rewrite.indices (lhs, rhs) in
-  let flat_lhs = List.concat lhs in
   let self_contracted, contracted_in_pair, contracted_in_group =
     List.fold_left
       (fun (selves, pairs, groups) edge ->
-        let count = list_count edge flat_lhs in
+        let count = nested_list_count edge lhs in
         if count = 1 then (String_set.add edge selves, pairs, groups)
         else if count = 2 then (selves, String_set.add edge pairs, groups)
         else (selves, pairs, String_set.add edge groups))
@@ -114,7 +115,16 @@ let draw_einsum edge_attributes lhs rhs =
         None
         (List.mapi (fun i x -> (i, x)) lhs)
     in
-    match found_ix with Some j -> j | None -> raise Not_found
+    match found_ix with
+    | Some j -> j
+    | None ->
+        Fmt.(
+          pf stderr "@[find_partner %d %s lhs=([@[%a@]]) -> Not_found@]@." i
+            edge_name
+            (list ~sep:semi
+               (parens (pair ~sep:comma int (brackets (list ~sep:sp string)))))
+            (List.mapi (fun i x -> (i, x)) lhs));
+        raise Not_found
   in
 
   List.iteri
