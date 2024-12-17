@@ -62,19 +62,53 @@ end = struct
   let create ?(opts = Jv.undefined) () = Jv.new' (jobj ()) [| opts |]
 end
 
-(*
+module Point : sig
+  type t = { left : float; right : float; top : float }
+
+  val zero : t
+  (* val negate : t -> t *)
+end = struct
+  type t = { left : float; right : float; top : float }
+
+  let zero = { left = 0.; right = 0.; top = 0. }
+
+  (* let negate { left; right; top } = *)
+  (*   { left = -.left; right = -.right; top = -.top } *)
+end
+
 module Path : sig
   type t = Jv.t
-  type point = { left : float; right : float; top : float }
 
-  val create : ?fill_color:string -> point list -> t
+  val create : ?stroke_color:string -> Point.t -> Point.t -> t
 end = struct
-  type t = Jv.t
-  type point = { left : float; right : float; top : float }
+  open Point
 
-  let create ?fill_color points = failwith "TODO"
+  type t = Jv.t
+
+  let jobj () = Jv.get (isometric ()) "IsometricPath"
+
+  let create ?(stroke_color = "red") path_start path_end =
+    let opts = Jv.obj [| ("strokeColor", Jv.of_string stroke_color) |] in
+    let piece = Jv.new' (jobj ()) [| opts |] in
+    let start =
+      Fmt.str "M%f %f %f L%f %f %f" path_start.left path_start.right
+        path_start.top path_start.left path_start.right path_start.top
+    in
+    let finish =
+      Fmt.str "M%f %f %f L%f %f %f" path_start.left path_start.right
+        path_start.top path_end.left path_end.right path_end.top
+    in
+    let opts =
+      Jv.obj
+        [|
+          ("property", Jv.of_string "path");
+          ("values", Jv.of_array Jv.of_string [| start; finish; start |]);
+        |]
+    in
+    Brr.Console.log [ "addAnimation opts"; opts ];
+    let _ = Jv.call piece "addAnimation" [| opts |] in
+    piece
 end
-*)
 
 module Text : sig
   type t = Jv.t
@@ -195,6 +229,7 @@ module Cube : sig
   type labels = string * string * string
 
   val create :
+    draw_diag:bool ->
     edge_attributes:Colors.edge_attributes ->
     left:float ->
     fill_color:string ->
@@ -204,29 +239,24 @@ end = struct
   type t = Jv.t
   type labels = string * string * string
 
-  let create ~edge_attributes ~left:left_pos ~fill_color ~labels:(a, b, c) =
+  let create ~draw_diag ~edge_attributes ~left:left_pos ~fill_color
+      ~labels:(a, b, c) =
     let get_length i =
       let label = match i with 0 -> a | 1 -> b | 2 -> c | _ -> assert false in
       (Hashtbl.find edge_attributes label).Colors.length
     in
     let l_depth, r_depth, height = (get_length 0, get_length 1, get_length 2) in
     let faces =
-      [ Plane_view.top; Plane_view.front; Plane_view.side ]
-      |> List.mapi (fun i plane_view ->
-             let face_opts =
-               match i with
-               | 0 ->
-                   Rectangle.opts ~height:l_depth ~width:r_depth ~top:height
-                     ~fill_color ~plane_view ()
-               | 1 ->
-                   Rectangle.opts ~height ~width:l_depth ~right:r_depth
-                     ~fill_color ~plane_view ()
-               | _ ->
-                   Rectangle.opts ~height ~width:r_depth ~left:l_depth
-                     ~fill_color ~plane_view ()
-             in
-
-             Rectangle.create ~opts:face_opts ())
+      Rectangle.
+        [
+          opts ~height:l_depth ~width:r_depth ~top:height ~fill_color
+            ~plane_view:Plane_view.top ();
+          opts ~height ~width:l_depth ~right:r_depth ~fill_color
+            ~plane_view:Plane_view.front ();
+          opts ~height ~width:r_depth ~left:l_depth ~fill_color
+            ~plane_view:Plane_view.side ();
+        ]
+      |> List.map (fun face_opts -> Rectangle.create ~opts:face_opts ())
     in
     let labels =
       [ a; b; c ]
@@ -247,14 +277,47 @@ end = struct
                ~opts:(Text.opts ~top ~left ~right ~fill_color:color label)
                ())
     in
-    Group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ labels)
+    let paths =
+      if draw_diag then
+        if a = b && b = c then
+          [
+            Path.create
+              Point.{ left = 0.; right = l_depth; top = height }
+              Point.{ left = r_depth; right = 0.; top = 0. };
+          ]
+        else if a = b then
+          [
+            Path.create
+              Point.{ left = 0.; right = l_depth; top = height }
+              Point.{ left = r_depth; right = 0.; top = height };
+          ]
+        else if a = c then
+          [
+            Path.create
+              Point.{ left = r_depth; right = l_depth; top = 0. }
+              Point.{ left = r_depth; right = 0.; top = height };
+          ]
+        else if b = c then
+          [
+            Path.create
+              Point.{ left = 0.; right = l_depth; top = 0. }
+              Point.{ left = r_depth; right = l_depth; top = height };
+          ]
+        else []
+      else []
+    in
+    Group.create ~left:left_pos ~top:(left_pos /. 2.) (faces @ labels @ paths)
 end
 
 module Tensor : sig
   type t = Jv.t
 
   val create :
-    edge_attributes:Colors.edge_attributes -> left:float -> string list -> t
+    draw_diag:bool ->
+    edge_attributes:Colors.edge_attributes ->
+    left:float ->
+    string list ->
+    t
 
   val is_valid : string list -> bool
 end = struct
@@ -264,7 +327,7 @@ end = struct
     | [] | [ _ ] | [ _; _ ] | [ _; _; _ ] -> true
     | _ -> false
 
-  let create ~edge_attributes ~left = function
+  let create ~draw_diag ~edge_attributes ~left = function
     | [ dim1 ] ->
         let Colors.{ length = l_depth; color } =
           Hashtbl.(find edge_attributes dim1)
@@ -276,6 +339,7 @@ end = struct
                 (Rectangle.opts ~height:l_depth ~width:0.
                    ~plane_view:Plane_view.top ~fill_color ())
               ();
+            (* Path *)
             Text.create
               ~opts:
                 (Text.opts ~left:(l_depth *. 0.5) ~right:(-1.4)
@@ -309,9 +373,18 @@ end = struct
               ();
           ]
         in
-        Group.create ~left ~top:(left /. 2.) children
+        let paths =
+          if draw_diag && dim1 = dim2 then
+            [
+              Path.create Point.zero
+                Point.{ left = r_depth; right = l_depth; top = 0. };
+            ]
+          else []
+        in
+        Group.create ~left ~top:(left /. 2.) (children @ paths)
     | [ a; b; c ] ->
-        Cube.create ~edge_attributes ~left ~fill_color ~labels:(a, b, c)
+        Cube.create ~draw_diag ~edge_attributes ~left ~fill_color
+          ~labels:(a, b, c)
     | [] -> Text.create ~opts:(Text.opts ~left ~top:(left /. 2.) "(scalar)") ()
     | invalid ->
         failwith (Fmt.str "Invalid tensor: %a" Fmt.(list string) invalid)
@@ -356,8 +429,9 @@ end = struct
           List.map
             (fun tensor ->
               let canvas, container = mk_canvas () in
-              (* TODO: show diagonal drawing *)
-              let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+              let tensor =
+                Tensor.create ~draw_diag:true ~edge_attributes ~left:0. tensor
+              in
               Canvas.add_child canvas tensor;
               container)
             lhs
@@ -379,7 +453,9 @@ end = struct
             (fun tensor ->
               let canvas, container = mk_canvas () in
               (* TODO: show shape updating *)
-              let tensor = Tensor.create ~edge_attributes ~left:0. tensor in
+              let tensor =
+                Tensor.create ~draw_diag:false ~edge_attributes ~left:0. tensor
+              in
               Canvas.add_child canvas tensor;
               container)
             diagonalized
@@ -395,7 +471,9 @@ end = struct
       | _ ->
           Queue.add (div [ txt' "Pointwise Multiply" ]) rows;
           let canvas, container = mk_canvas () in
-          let tensor = Tensor.create ~edge_attributes ~left:0. broadcast in
+          let tensor =
+            Tensor.create ~draw_diag:false ~edge_attributes ~left:0. broadcast
+          in
           Canvas.add_child canvas tensor;
           div [ container ]
     in
@@ -417,7 +495,9 @@ end = struct
              ])
           rows;
         let canvas, container = mk_canvas () in
-        let tensor = Tensor.create ~edge_attributes ~left:0. rhs in
+        let tensor =
+          Tensor.create ~draw_diag:false ~edge_attributes ~left:0. rhs
+        in
         Canvas.add_child canvas tensor;
         div [ container ])
       else div [ txt' "(no contraction)" ]
