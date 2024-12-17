@@ -1022,6 +1022,18 @@ let tutorial container =
       [ txt' text ]
   in
 
+  let broadcast_info =
+    div
+      [
+        txt'
+          "Broadcasting is a technique used in numpy and other libraries to \
+           allow operations on arrays of different shapes. For example, if you \
+           have a 3x3 matrix and a 3x1 vector, numpy will automatically expand \
+           the vector to a 3x3 matrix by repeating the vector along the second \
+           axis. ";
+      ]
+  in
+
   let code' text = code [ txt' text ] in
   let content =
     El.div
@@ -1221,9 +1233,11 @@ let tutorial container =
               ];
             El.li
               [
+                txt' "Broadcast";
+                info broadcast_info;
                 txt'
-                  "Broadcast and reorder as necessary to make each input \
-                   tensor the same shape.";
+                  " and reorder as necessary to make each input tensor the \
+                   same shape.";
               ];
             El.li
               [
