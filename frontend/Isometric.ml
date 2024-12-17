@@ -1,8 +1,8 @@
 open Tensor_playground
 module String_set = Set.Make (String)
 
-let default_height = 320
-let default_width = 500
+let default_height = 160
+let default_width = 200
 let fill_color = "#ccc"
 let isometric () = Jv.get Jv.global "isometric"
 let classes = Frontend_util.classes
