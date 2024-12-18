@@ -493,7 +493,7 @@ end = struct
         (fun tensor ->
           let canvas, container = mk_canvas () in
           let tensor =
-            Tensor.create ~draw_diag:true ~edge_colors
+            Tensor.create ~draw_diag:false ~edge_colors
               (List.map (fun label -> (label, [| get_length label |])) tensor)
           in
           Canvas.add_child canvas tensor;
