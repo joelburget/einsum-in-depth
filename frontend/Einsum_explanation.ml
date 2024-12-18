@@ -1341,6 +1341,33 @@ let tutorial container =
                dump all of the tensors you need in, and tell einsum the shape \
                you want out, and it tends to do the right thing.";
           ];
+        h3 [ txt' "Bonus: How Contractions Are Actually Computed" ];
+        p
+          [
+            txt'
+              "A group of tensors is reduced one pair at a time. The result \
+               will be the same no matter which order tensors were reduced in, \
+               but different orders can have vastly different performance \
+               characteristics. ";
+            a "https://github.com/dgasmith/opt_einsum" "opt_einsum";
+            txt'
+              " shows an example where the same reduction takes 3000x longer \
+               without optimization.";
+          ];
+        p
+          [
+            txt'
+              "The general problem of finding the optimal path is NP-hard (the \
+               number of possible ways of reducing n tensors ";
+            a "https://en.wikipedia.org/wiki/Catalan_number" "grows";
+            txt' " ";
+            a "https://en.wikipedia.org/wiki/Matrix_chain_multiplication"
+              "quickly";
+            txt' ". See the ";
+            a "https://dgasmith.github.io/opt_einsum/paths/introduction/"
+              "opt_einsum docs";
+            txt' " for more.";
+          ];
         h1 [ txt' "Examples" ];
         p
           [
