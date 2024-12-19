@@ -6,6 +6,8 @@ open Tensor_playground
 
 type validated_inputs = unit
 
+let code' text = code [ txt' text ]
+
 let validate_path n_tensors path =
   if List.length path = 0 then None
   else if List.length path <> n_tensors - 1 then
@@ -373,7 +375,7 @@ let tutorial container =
 
   let clicked_op_in_text_e, send_clicked_op_in_text = E.create () in
   let example str =
-    let elem = Brr.El.button ~at:(classes "underline") [ code [ txt' str ] ] in
+    let elem = Brr.El.button ~at:(classes "underline") [ code' str ] in
     let evt = Note_brr.Evr.on_el Ev.click (fun _ -> ()) elem in
     (* XXX does this have the correct semantics? Event leak etc? *)
     Logr.may_hold
@@ -392,7 +394,7 @@ let tutorial container =
 
   let parsed_input_signal =
     S.map
-      (fun str -> str |> trim_before_colon |> Einsum_parser.Friendly.parse)
+      (fun str -> str |> trim_before_colon |> Einsum_parser.parse)
       current_input
   in
 
@@ -400,7 +402,68 @@ let tutorial container =
     mk_code_preference_selector ()
   in
 
-  let render_explanation rewrite code_preference =
+  let interpretation_info ~valid_as_both =
+    p
+      [
+        txt'
+          (if valid_as_both then "This input is valid as either "
+           else "We accept either ");
+        a "https://einops.rocks/#why-use-einops-notation" "Einops notation";
+        txt' " or as ";
+        El.a
+          ~at:
+            [
+              At.href
+                (Jstr.v
+                   "https://numpy.org/doc/stable/reference/generated/numpy.einsum.html");
+            ]
+          [ code' "numpy.einsum" ];
+        txt' " notation (which is the same as ";
+        El.a
+          ~at:
+            [
+              At.href
+                (Jstr.v
+                   "https://pytorch.org/docs/stable/generated/torch.einsum.html");
+            ]
+          [ code' "torch.einsum" ];
+        txt' ")";
+      ]
+  in
+
+  let interpreted_as_friendly_message =
+    let button = El.button [ txt' "Switch to "; code' "numpy.einsum" ] in
+    let click_button_event = Evr.on_el Ev.click (fun _ -> ()) button in
+    Logr.may_hold
+      E.(
+        log click_button_event (fun () -> set_syntax_preference (Some Original)));
+    div
+      [
+        interpretation_info ~valid_as_both:true;
+        p [ txt' "We've interpreted it as Einops notation." ];
+        button;
+      ]
+  in
+  let interpreted_as_original_message =
+    let button = El.button [ txt' "Switch to Einops" ] in
+    let click_button_event = Evr.on_el Ev.click (fun _ -> ()) button in
+    Logr.may_hold
+      E.(
+        log click_button_event (fun () -> set_syntax_preference (Some Friendly)));
+    div
+      [
+        interpretation_info ~valid_as_both:true;
+        p
+          [
+            txt' "We've interpreted it as ";
+            code' "numpy.einsum";
+            txt' " notation.";
+          ];
+        button;
+      ]
+  in
+
+  let render_explanation rewrite code_preference _syntax_preference =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
     let get_color edge_name =
       match Hashtbl.find_opt edge_attributes edge_name with
@@ -440,7 +503,7 @@ let tutorial container =
             ") to sum over each product term. First, here's equivalent, \
              simplified (but slow, because it's not vectorized) Python code. \
              We initialize an empty ";
-          code [ txt' "result" ];
+          code' "result";
           txt'
             " array and then iterate over every position in every axis, \
              building up the result.";
@@ -459,7 +522,7 @@ let tutorial container =
         [
           txt'
             "In this next version of the code, we use the Frobenius product (";
-          code [ txt' (Fmt.str "%s.sum(inputs)" framework_code_name) ];
+          code' (Fmt.str "%s.sum(inputs)" framework_code_name);
           txt' ") instead of iterating over each summation index individually.";
         ];
       div ~at:(classes "flex flex-row")
@@ -490,13 +553,37 @@ let tutorial container =
     ]
   in
 
-  let explanation_signal =
-    S.l2
-      (fun rewrite code_preference ->
-        match rewrite with
-        | Ok rewrite -> render_explanation rewrite code_preference
-        | Error msg -> [ div ~at:(classes "text-red-600") [ txt' msg ] ])
-      parsed_input_signal code_preference_signal
+  let explanation_message_s =
+    S.l3
+      (fun rewrites code_preference syntax_preference ->
+        let explanation, opt_syntax_preference_message =
+          match rewrites with
+          | Ok friendly_rewrite, Ok original_rewrite -> (
+              match syntax_preference with
+              | Some Friendly | None ->
+                  ( render_explanation friendly_rewrite code_preference
+                      syntax_preference,
+                    Some interpreted_as_friendly_message )
+              | Some Original ->
+                  ( render_explanation original_rewrite code_preference
+                      syntax_preference,
+                    Some interpreted_as_original_message ))
+          | Ok rewrite, Error _ ->
+              ( render_explanation rewrite code_preference syntax_preference,
+                None )
+          | Error _, Ok rewrite ->
+              ( render_explanation rewrite code_preference syntax_preference,
+                None )
+          | Error msg, _ ->
+              ([ div ~at:(classes "text-red-600") [ txt' msg ] ], None)
+        in
+        let syntax_preference_message =
+          match opt_syntax_preference_message with
+          | Some msg -> msg
+          | None -> interpretation_info ~valid_as_both:false
+        in
+        (explanation, syntax_preference_message))
+      parsed_input_signal code_preference_signal syntax_preference_s
   in
 
   let a href text =
@@ -521,7 +608,6 @@ let tutorial container =
       ]
   in
 
-  let code' text = code [ txt' text ] in
   let content =
     El.div
       [
@@ -559,7 +645,7 @@ let tutorial container =
             txt'
               " takes a vector (the fact that a vector is one-dimensional \
                corresponds to the single index, ";
-            code [ txt' "i" ];
+            code' "i";
             txt' ") and returns the same vector. Likewise ";
             example "i j -> i j";
             txt' " is the identity operation on matrices, and ";
@@ -572,15 +658,15 @@ let tutorial container =
             txt' "The order vectors are written in matters. ";
             example "i j -> j i";
             txt' " swaps the positions of the ";
-            code [ txt' "i" ];
+            code' "i";
             txt' " and ";
-            code [ txt' "j" ];
+            code' "j";
             txt' " dimensions. ";
-            code [ txt' "i" ];
+            code' "i";
             txt'
               " changes from the row dimension to the column dimension, and \
                likewise with ";
-            code [ txt' "j" ];
+            code' "j";
             txt' ". So this operation is the transpose.";
           ];
         p
@@ -588,9 +674,9 @@ let tutorial container =
             txt'
               "As an aside, you may wonder whether there's a way to reverse \
                the direction of a dimension. For example, reverse ";
-            code [ txt' "<1 2 3>" ];
+            code' "<1 2 3>";
             txt' " to ";
-            code [ txt' "<3 2 1>" ];
+            code' "<3 2 1>";
             txt' " But nope, einsum can't do this.";
           ];
         h3 [ txt' "3. sum" ];
@@ -614,13 +700,13 @@ let tutorial container =
             txt' "In an example like ";
             example "i j -> j";
             txt' ", you may notice that the ";
-            code [ txt' "i" ];
+            code' "i";
             txt' " and ";
-            code [ txt' "j" ];
+            code' "j";
             txt' " indices act differently. ";
-            code [ txt' "j" ];
+            code' "j";
             txt' " is an example of a free index, while ";
-            code [ txt' "i" ];
+            code' "i";
             txt'
               " is an example of a summed index. Free indices appear in the \
                output specification, while summation indices don't.";
@@ -649,7 +735,7 @@ let tutorial container =
             txt'
               "). You can think of this as using the same variable to iterate \
                over both dimensions (";
-            code [ txt' "[arr[i, i] for i in d_i]" ];
+            code' "[arr[i, i] for i in d_i]";
             txt'
               "). It's also possible to repeat an index three or more times (";
             example "i i i -> i";
@@ -758,11 +844,11 @@ let tutorial container =
             txt'
               "Because tensors are just n-dimensional grids of numbers, we \
                can't look at a tensor labeled ";
-            code [ txt' "a b c" ];
+            code' "a b c";
             txt'
               " and say what each dimension represents. But given a tensor \
                labeled ";
-            code [ txt' "batch d_in d_out" ];
+            code' "batch d_in d_out";
             txt'
               " we can make a pretty good guess. In fact, those three \
                dimensions correspond to the three roles I just mentioned \
@@ -958,7 +1044,7 @@ let tutorial container =
 
   (* On mobile, the right pane is a full-screen collapsible overlay.
      On desktop, it's displayed side-by-side. *)
-  let result_output = div [] in
+  let result_container, syntax_message_container = (div [], div []) in
   let right_pane =
     El.div
       ~at:
@@ -983,23 +1069,20 @@ let tutorial container =
           [
             txt' "Or enter your own contraction: ";
             c_input;
-            info
-              (div
-                 [
-                   txt' "We use ";
-                   a "https://einops.rocks/" "einops notation";
-                   txt'
-                     ", not the notation built in to Numpy and Pytorch. Note \
-                      that einops notation supports parenthesis and ellipsis \
-                      notation, but we don't.";
-                 ]);
+            syntax_message_container;
           ];
-        result_output;
+        result_container;
       ]
   in
 
-  Elr.def_children result_output explanation_signal;
+  let explanation_signal = S.Pair.fst explanation_message_s in
+  let syntax_preference_message_s = S.Pair.snd explanation_message_s in
 
+  Elr.def_children result_container explanation_signal;
+  Elr.def_children syntax_message_container
+    (S.map (fun msg -> [ info msg ]) syntax_preference_message_s);
+
+  (* Overlay: click on the left pane to show the right pane *)
   Elr.def_class (Jstr.v "translate-y-full") overlay_hidden_s right_pane;
 
   (* Hide overlay when close button is clicked *)

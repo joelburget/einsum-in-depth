@@ -157,3 +157,5 @@ module Original = struct
   let parse str =
     match parse_unsafe str with x -> Ok x | exception Error e -> Error e
 end
+
+let parse str = (Friendly.parse str, Original.parse str)
