@@ -595,7 +595,9 @@ end = struct
             reordered
         in
         div ~at:(classes "flex flex-row") row)
-      else div ~at:(classes "flex flex-row") [ txt' "(no diagonals)" ]
+      else
+        div ~at:(classes "flex flex-row")
+          [ txt' "(no reordering / broadcasting)" ]
     in
     Queue.add elem rows;
 
