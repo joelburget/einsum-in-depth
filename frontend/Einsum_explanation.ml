@@ -862,7 +862,7 @@ let tutorial container =
         p
           [
             txt'
-              "Finally, on the highest level, its best to think of dimensions \
+              "Finally, on the highest level, it's best to think of dimensions \
                as fulfilling three different roles:";
           ];
         El.ul

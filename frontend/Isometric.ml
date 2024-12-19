@@ -488,6 +488,7 @@ end = struct
       (canvas, container)
     in
 
+    Queue.add (div [ txt' "Start" ]) rows;
     let row =
       List.map
         (fun tensor ->
