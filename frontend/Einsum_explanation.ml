@@ -8,6 +8,9 @@ type validated_inputs = unit
 
 let code' text = code [ txt' text ]
 
+let text_button_classes =
+  classes "not-prose text-indigo-500 hover:text-gray-700"
+
 let validate_path n_tensors path =
   if List.length path = 0 then None
   else if List.length path <> n_tensors - 1 then
@@ -387,7 +390,7 @@ let tutorial container =
     let contents_s =
       syntax_preference_s |> S.map (fun preference -> [ code' (f preference) ])
     in
-    let button = Brr.El.button ~at:(classes "underline") [] in
+    let button = Brr.El.button ~at:text_button_classes [] in
     Elr.def_children button contents_s;
     let evt = Note_brr.Evr.on_el Ev.click (fun _ -> ()) button in
     (* XXX does this have the correct semantics? Event leak etc? *)
@@ -444,19 +447,14 @@ let tutorial container =
       ]
   in
 
-  let button_classes =
-    classes
-      "border-indigo-500 text-indigo-500 border-transparent \
-       hover:border-gray-300 hover:text-gray-700"
-  in
   let interpreted_as_friendly_message =
     let button =
-      El.button ~at:button_classes [ txt' "Switch to "; code' "numpy.einsum" ]
+      El.button ~at:text_button_classes
+        [ txt' "Switch to "; code' "numpy.einsum" ]
     in
     let click_button_event =
       Evr.on_el Ev.click
         (fun evt ->
-          Ev.prevent_default evt;
           Ev.stop_propagation evt;
           ())
         button
@@ -472,11 +470,12 @@ let tutorial container =
       ]
   in
   let interpreted_as_original_message =
-    let button = El.button ~at:button_classes [ txt' "Switch to Einops" ] in
+    let button =
+      El.button ~at:text_button_classes [ txt' "Switch to Einops" ]
+    in
     let click_button_event =
       Evr.on_el Ev.click
         (fun evt ->
-          Ev.prevent_default evt;
           Ev.stop_propagation evt;
           ())
         button
