@@ -374,21 +374,34 @@ let tutorial container =
   in
 
   let clicked_op_in_text_e, send_clicked_op_in_text = E.create () in
-  let example str =
-    let elem = Brr.El.button ~at:(classes "underline") [ code' str ] in
-    let evt = Note_brr.Evr.on_el Ev.click (fun _ -> ()) elem in
+  let example friendly_spec =
+    let f = function
+      | Some Friendly | None -> friendly_spec
+      | Some Original -> (
+          match Einsum_parser.Original.parse friendly_spec with
+          | Error _ -> friendly_spec (* Should never happen *)
+          | Ok parsed ->
+              parsed |> Einops.Rewrite.to_original
+              |> Fmt.to_to_string Einops.Rewrite.pp_original)
+    in
+    let contents_s =
+      syntax_preference_s |> S.map (fun preference -> [ code' (f preference) ])
+    in
+    let button = Brr.El.button ~at:(classes "underline") [] in
+    Elr.def_children button contents_s;
+    let evt = Note_brr.Evr.on_el Ev.click (fun _ -> ()) button in
     (* XXX does this have the correct semantics? Event leak etc? *)
     Logr.may_hold
       E.(
         log evt (fun () ->
-            send_clicked_op_in_text str;
+            send_clicked_op_in_text (f (S.value syntax_preference_s));
             (* TODO: this will always show the overlay if the screen becomes smaller *)
             set_overlay_hidden false));
-    elem
+    button
   in
 
   let logger, c_input, current_input =
-    input' ~at:input_classes "a b, b c -> a c" clicked_op_in_text_e
+    input' ~at:input_classes "ab -> ab" clicked_op_in_text_e
   in
   Logr.may_hold logger;
 
@@ -431,9 +444,23 @@ let tutorial container =
       ]
   in
 
+  let button_classes =
+    classes
+      "border-indigo-500 text-indigo-500 border-transparent \
+       hover:border-gray-300 hover:text-gray-700"
+  in
   let interpreted_as_friendly_message =
-    let button = El.button [ txt' "Switch to "; code' "numpy.einsum" ] in
-    let click_button_event = Evr.on_el Ev.click (fun _ -> ()) button in
+    let button =
+      El.button ~at:button_classes [ txt' "Switch to "; code' "numpy.einsum" ]
+    in
+    let click_button_event =
+      Evr.on_el Ev.click
+        (fun evt ->
+          Ev.prevent_default evt;
+          Ev.stop_propagation evt;
+          ())
+        button
+    in
     Logr.may_hold
       E.(
         log click_button_event (fun () -> set_syntax_preference (Some Original)));
@@ -445,8 +472,15 @@ let tutorial container =
       ]
   in
   let interpreted_as_original_message =
-    let button = El.button [ txt' "Switch to Einops" ] in
-    let click_button_event = Evr.on_el Ev.click (fun _ -> ()) button in
+    let button = El.button ~at:button_classes [ txt' "Switch to Einops" ] in
+    let click_button_event =
+      Evr.on_el Ev.click
+        (fun evt ->
+          Ev.prevent_default evt;
+          Ev.stop_propagation evt;
+          ())
+        button
+    in
     Logr.may_hold
       E.(
         log click_button_event (fun () -> set_syntax_preference (Some Friendly)));
@@ -1065,12 +1099,7 @@ let tutorial container =
             El.h2 ~at:(classes "text-2xl") [ txt' "Explanation" ]; close_button;
           ];
         El.p [ txt' "Click on an example to see its explanation here." ];
-        div
-          [
-            txt' "Or enter your own contraction: ";
-            c_input;
-            syntax_message_container;
-          ];
+        syntax_message_container;
         result_container;
       ]
   in
@@ -1080,7 +1109,10 @@ let tutorial container =
 
   Elr.def_children result_container explanation_signal;
   Elr.def_children syntax_message_container
-    (S.map (fun msg -> [ info msg ]) syntax_preference_message_s);
+    (S.map
+       (fun msg ->
+         [ txt' "Or enter your own contraction: "; c_input; info msg ])
+       syntax_preference_message_s);
 
   (* Overlay: click on the left pane to show the right pane *)
   Elr.def_class (Jstr.v "translate-y-full") overlay_hidden_s right_pane;
