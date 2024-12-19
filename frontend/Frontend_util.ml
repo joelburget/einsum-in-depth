@@ -439,3 +439,23 @@ let info child = Select_and_info.info child
 
 let a link text =
   El.a ~at:[ At.href (Jstr.v link); class_ "underline" ] [ txt' text ]
+
+let rec unsnoc = function
+  | [] -> failwith "unsnoc empty list"
+  | [ x ] -> ([], x)
+  | x :: xs ->
+      let init, last = unsnoc xs in
+      (x :: init, last)
+
+let mk_color_style color = At.style (Jstr.v Fmt.(str "color: %a" string color))
+
+let list_variables get_color vars =
+  let mk_code x = code ~at:[ mk_color_style (get_color x) ] [ txt' x ] in
+  match vars with
+  | [] -> [ txt' "in his case there are none" ]
+  | [ x ] -> [ mk_code x ]
+  | [ x; y ] -> [ mk_code x; txt' " and "; mk_code y ]
+  | xs ->
+      let init, last = unsnoc xs in
+      Einops.intersperse (fun () -> txt' ", ") (List.map mk_code init)
+      @ [ txt' ", and "; mk_code last ]

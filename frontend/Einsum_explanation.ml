@@ -73,26 +73,6 @@ let trim_before_colon s =
     String.sub s (colon_index + 1) (String.length s - colon_index - 1)
   with Not_found -> s
 
-let rec unsnoc = function
-  | [] -> failwith "unsnoc empty list"
-  | [ x ] -> ([], x)
-  | x :: xs ->
-      let init, last = unsnoc xs in
-      (x :: init, last)
-
-let mk_color_style color = At.style (Jstr.v Fmt.(str "color: %a" string color))
-
-let list_variables get_color vars =
-  let mk_code x = code ~at:[ mk_color_style (get_color x) ] [ txt' x ] in
-  match vars with
-  | [] -> [ txt' "in his case there are none" ]
-  | [ x ] -> [ mk_code x ]
-  | [ x; y ] -> [ mk_code x; txt' " and "; mk_code y ]
-  | xs ->
-      let init, last = unsnoc xs in
-      Einops.intersperse (fun () -> txt' ", ") (List.map mk_code init)
-      @ [ txt' ", and "; mk_code last ]
-
 module Make_formatter : sig
   type t = Brr.El.t * Format.formatter
 
@@ -404,7 +384,7 @@ let tutorial container =
   in
 
   let logger, c_input, current_input =
-    input' ~at:input_classes "ab -> ab" clicked_op_in_text_e
+    input' ~at:input_classes "a b ->" clicked_op_in_text_e
   in
   Logr.may_hold logger;
 

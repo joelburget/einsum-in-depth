@@ -464,8 +464,13 @@ end = struct
       |> Hashtbl.of_seq
     in
     let get_length label = (Hashtbl.find edge_attributes label).length in
+    let get_color edge_name =
+      match Hashtbl.find_opt edge_attributes edge_name with
+      | None -> if Colors.prefers_dark () then "#fff" else "#000"
+      | Some { Colors.color; _ } -> color
+    in
     let rows = Queue.create () in
-    let div, txt' = Brr.El.(div, txt') in
+    let div, span, txt' = Brr.El.(div, span, txt') in
     let Einops.Steps.{ diagonalized; broadcast } =
       Einops.Steps.make (lhs, rhs)
     in
@@ -628,10 +633,8 @@ end = struct
         Queue.add
           (div
              [
-               txt'
-                 Fmt.(
-                   str "Contract [@[%a@]]" (list ~sep:comma string)
-                     axes_to_contract);
+               txt' "Contract ";
+               span (Frontend_util.list_variables get_color axes_to_contract);
              ])
           rows;
         let canvas, container = mk_canvas () in
