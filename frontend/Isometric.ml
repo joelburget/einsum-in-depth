@@ -67,10 +67,10 @@ end = struct
 
   let add_anim side_name values face =
     if Array.length values = 1 then face
-    else
-      (* Fmt.pr "@[add_anim: %s: [@[%a@]]@]@." side_name *)
-      (*   Fmt.(list ~sep:comma float) *)
-      (*   (Array.to_list values); *)
+    else (
+      Fmt.pr "@[add_anim: %s: [@[%a@]]@]@." side_name
+        Fmt.(list ~sep:comma float)
+        (Array.to_list values);
       let anim_opts =
         Jv.obj
           [|
@@ -79,7 +79,7 @@ end = struct
             ("values", Jv.of_array Jv.of_float values);
           |]
       in
-      Jv.call face "addAnimation" [| anim_opts |]
+      Jv.call face "addAnimation" [| anim_opts |])
 
   let create ?(opts = Jv.undefined) ~height ~width () =
     Fmt.(
@@ -87,8 +87,9 @@ end = struct
         (array ~sep:semi float) width);
     (* weird hack: *)
     Jv.Float.set opts "height"
-      (if Array.length height > 1 then 0. else height.(0));
-    Jv.Float.set opts "width" (if Array.length width > 1 then 0. else width.(0));
+      (if Array.length height > 1 then 0.1 else height.(0));
+    Jv.Float.set opts "width"
+      (if Array.length width > 1 then 0.1 else width.(0));
     (* end weird hack *)
     Jv.new' (jobj ()) [| opts |]
     |> add_anim "height" height |> add_anim "width" width
@@ -367,14 +368,8 @@ module Tensor : sig
     edge_colors:Colors.edge_colors ->
     (string * float array) list ->
     t
-
-  val is_valid : string list -> bool
 end = struct
   type t = Jv.t
-
-  let is_valid = function
-    | [] | [ _ ] | [ _; _ ] | [ _; _; _ ] -> true
-    | _ -> false
 
   let create ~draw_diag ~edge_colors = function
     | [ (dim1, height) ] ->
@@ -443,7 +438,11 @@ end = struct
     | invalid ->
         failwith
           Fmt.(
-            str "Invalid tensor: %a" (list (pair string (array float))) invalid)
+            str "Invalid tensor: [@[%a@]]@."
+              (list ~sep:semi
+                 (parens
+                    (pair ~sep:comma string (brackets (array ~sep:semi float)))))
+              invalid)
 end
 
 module Scene : sig
@@ -454,10 +453,10 @@ module Scene : sig
     edge_attributes:Colors.edge_attributes ->
     string list list ->
     string list ->
-    Brr.El.t
+    Brr.El.t option
 end = struct
-  let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
-      ~edge_attributes lhs rhs =
+  let render_unsafe ?(scale = 10.) ?(height = default_height)
+      ?(width = default_width) ~edge_attributes lhs rhs =
     let edge_colors =
       edge_attributes |> Hashtbl.to_seq
       |> Seq.map (fun (k, v) -> (k, v.Colors.color))
@@ -532,7 +531,7 @@ end = struct
             lhs
         in
         div ~at:(classes "flex flex-row") row)
-      else div ~at:(classes "flex flex-row") [ txt' "(no diagonals)" ]
+      else div ~at:(classes "flex flex-row") [ (* txt' "(no diagonals)" *) ]
     in
     Queue.add elem rows;
 
@@ -561,7 +560,14 @@ end = struct
     let broadcast_necessary = not tensors_match_shape in
     let elem =
       if reorder_necessary || broadcast_necessary then (
-        Queue.add (div [ txt' "Reorder and Broadcast" ]) rows;
+        let msg =
+          match (reorder_necessary, broadcast_necessary) with
+          | true, true -> "Reorder and Broadcast"
+          | true, false -> "Reorder"
+          | false, true -> "Broadcast"
+          | false, false -> assert false
+        in
+        Queue.add (div [ txt' msg ]) rows;
         let row =
           List.map
             (fun diag_tensor ->
@@ -603,13 +609,13 @@ end = struct
         div ~at:(classes "flex flex-row") row)
       else
         div ~at:(classes "flex flex-row")
-          [ txt' "(no reordering / broadcasting)" ]
+          [ (* txt' "(no reordering / broadcasting)" *) ]
     in
     Queue.add elem rows;
 
     let elem =
       match reordered with
-      | [ _ ] -> div [ txt' "(only one tensor, no pointwise multiply)" ]
+      | [ _ ] -> div [ (* txt' "(only one tensor, no pointwise multiply)" *) ]
       | _ ->
           Queue.add (div [ txt' "Pointwise Multiply" ]) rows;
           let canvas, container = mk_canvas () in
@@ -659,9 +665,16 @@ end = struct
 
         Canvas.add_child canvas tensor;
         div [ container ])
-      else div [ txt' "(no contraction)" ]
+      else div [ (* txt' "(no contraction)" *) ]
     in
     Queue.add elem rows;
 
     div ~at:(classes "flex flex-col") (rows |> Queue.to_seq |> List.of_seq)
+
+  let render ?(scale = 10.) ?(height = default_height) ?(width = default_width)
+      ~edge_attributes lhs rhs =
+    try Some (render_unsafe ~scale ~height ~width ~edge_attributes lhs rhs)
+    with e ->
+      Fmt.(pf stderr "@[render: %a@]@." exn e);
+      None
 end

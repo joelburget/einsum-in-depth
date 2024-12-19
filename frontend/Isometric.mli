@@ -4,12 +4,6 @@ module EdgeAnimation : sig
   type t = edge * direction
 end
 
-module Tensor : sig
-  type t = Jv.t
-
-  val is_valid : string list -> bool
-end
-
 module Scene : sig
   val render :
     ?scale:float ->
@@ -19,5 +13,5 @@ module Scene : sig
     edge_attributes:Colors.edge_attributes ->
     string list list ->
     string list ->
-    Brr.El.t
+    Brr.El.t option
 end

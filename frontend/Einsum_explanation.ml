@@ -499,9 +499,6 @@ let tutorial container =
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
     let lhs, rhs = rewrite in
-    let valid_isometric_tensors =
-      List.for_all Isometric.Tensor.is_valid (rhs :: lhs)
-    in
     [
       h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Low-level: Python Code" ];
       p
@@ -522,7 +519,8 @@ let tutorial container =
              building up the result.";
         ];
       code_preference_selector;
-      div ~at:(classes "flex flex-row")
+      div
+        ~at:(classes "flex flex-row my-4")
         [
           El.pre
             [
@@ -538,7 +536,8 @@ let tutorial container =
           code' (Fmt.str "%s.sum(inputs)" framework_code_name);
           txt' ") instead of iterating over each summation index individually.";
         ];
-      div ~at:(classes "flex flex-row")
+      div
+        ~at:(classes "flex flex-row my-4")
         [
           El.pre
             [
@@ -549,20 +548,19 @@ let tutorial container =
         ];
       h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Medium-level" ];
       div
-        (if valid_isometric_tensors then
-           [ Isometric.Scene.render ~edge_attributes lhs rhs ]
-         else
-           [
-             txt'
-               "Isometric diagrams are only available if all tensors are of \
-                dimension 3 or less.";
-           ]);
-      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "High-level: tensor diagram" ];
-      div
-        [
-          Tensor_diagram.draw_einsum edge_attributes lhs rhs;
-          mk_tensor_diagram_info ();
-        ];
+        (match Isometric.Scene.render ~edge_attributes lhs rhs with
+        | Some render -> [ render ]
+        | None ->
+            [
+              txt'
+                "Isometric diagrams are only available if all tensors (and all \
+                 intermediate tensors, which may be bigger than all inputs and \
+                 the output!) are of dimension 3 or less.";
+            ]);
+      h2
+        ~at:(classes "text-xl mt-3 mb-1")
+        [ txt' "High-level: tensor diagram"; mk_tensor_diagram_info () ];
+      div [ Tensor_diagram.draw_einsum edge_attributes lhs rhs ];
     ]
   in
 
@@ -605,6 +603,7 @@ let tutorial container =
         [
           At.v (Jstr.v "href") (Jstr.v href);
           At.v (Jstr.v "target") (Jstr.v "_blank");
+          At.class' (Jstr.v "underline");
         ]
       [ txt' text ]
   in
@@ -624,23 +623,26 @@ let tutorial container =
   let content =
     El.div
       [
+        h1 [ txt' "Einsum Tutorial" ];
         p
           [
+            a "https://en.wikipedia.org/wiki/Einstein_notation"
+              "Einsum (Einstein summation) notation";
             txt'
-              "Einsum notation is a compact and intuitive way to write many \
-               linear algebra operations: matrix multiplication, dot / \
-               Frobenius product, transpose, trace, as well as many more \
-               complex operations which don't have a name.";
+              " is a compact and intuitive way to write many linear algebra \
+               operations: matrix multiplication, dot / Frobenius product, \
+               transpose, trace, as well as many more complex operations which \
+               don't have a name.";
           ];
         p
           [
             txt'
               "Though Einsums are easy to read and to understand on the level \
-               of the shapes of the input and output tensors, I've found it \
-               hard to understand what an einsum expression is actually doing. \
-               That's why I've built this page, where we start from the basics \
-               and build up to understanding what complex expressions actually \
-               mean.";
+               of the shapes of the input and output tensors, I initially \
+               found it hard to understand what an einsum expression was \
+               actually doing. That's why I built this page, where we start \
+               from the basics and build up to understanding what complex \
+               expressions actually mean.";
           ];
         h2 [ txt' "Basic Operations" ];
         p
@@ -668,7 +670,7 @@ let tutorial container =
         h3 [ txt' "2. transpose" ];
         p
           [
-            txt' "The order vectors are written in matters. ";
+            txt' "The ordering of labels matters. ";
             example "i j -> j i";
             txt' " swaps the positions of the ";
             code' "i";
@@ -690,7 +692,7 @@ let tutorial container =
             code' "<1 2 3>";
             txt' " to ";
             code' "<3 2 1>";
-            txt' " But nope, einsum can't do this.";
+            txt' ". But einsums can't do this.";
           ];
         h3 [ txt' "3. sum" ];
         p
@@ -766,20 +768,29 @@ let tutorial container =
             txt'
               "There's one more basic operation. So far, we've been operating \
                on a single tensor, but an einsum can act on any number of \
-               tensors. TODO explain the meaning of this";
+               tensors. ";
+            example "i, i -> i";
+            txt' " is the element-wise product of two vectors. Likewise, ";
+            example "i j, i j -> i j";
+            txt'
+              " is the element-wise product of two matrices. In general, we \
+               can always combine two tensors of the same shape in this way. \
+               This is called the ";
+            a "https://en.wikipedia.org/wiki/Hadamard_product_(matrices)"
+              "Hadamard product";
+            txt' ".";
           ];
-        p [ example "i, i -> i" ];
         h1 [ txt' "Three ways to think about contractions" ];
         p
           [
             txt'
               "There are at least three ways of thinking about what an einsum \
-               is doing, increasingly abstractly.";
+               is doing, at increasing levels of abstraction.";
           ];
         p
           [
             txt'
-              "First, the lowest level, which is useful for defining the \
+              "First, at the lowest level, which is useful for defining the \
                operational semantics of einsum but inefficient to compute (see \
                Python code) and not very insightful:";
           ];
@@ -806,7 +817,21 @@ let tutorial container =
                    to the current cell.";
               ];
           ];
-        p [ txt' "Second, on a higher level (see tensor diagram):" ];
+        p
+          [
+            txt' "Second, on the middle level (see isometric diagrams):";
+            info
+              (p
+                 [
+                   txt'
+                     "I hadn't previously seen this interpretation, so I wrote \
+                      a ";
+                   a
+                     "https://github.com/joelburget/einsum-tutorial/blob/main/verify_consistency.py"
+                     "script";
+                   txt' " to confirm that it is consistent with the other two.";
+                 ]);
+          ];
         El.ul
           [
             El.li
@@ -842,8 +867,14 @@ let tutorial container =
         p
           [
             txt'
-              "Finally, on the highest level, it's best to think of dimensions \
-               as fulfilling three different roles:";
+              "Concisely: diagonalize, make the same shape (broadcast / \
+               reorder), align, and contract.";
+          ];
+        p
+          [
+            txt'
+              "Finally, on the highest level, I think of dimensions as \
+               fulfilling three different roles:";
           ];
         El.ul
           [
@@ -965,7 +996,7 @@ let tutorial container =
         h2 [ txt' "Linear Algebra" ];
         El.ul
           [
-            El.li [ example "a b, b c -> a c"; txt' " (matmul)" ];
+            El.li [ example "a b, b c -> a c"; txt' " (matrix multiplication)" ];
             El.li [ example "a b, b -> a"; txt' " (matrix-vector product)" ];
             El.li [ example "i i ->"; txt' " (trace)" ];
             El.li [ example "i j -> j"; txt' " (column sum)" ];
