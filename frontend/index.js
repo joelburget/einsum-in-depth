@@ -6,7 +6,7 @@ const width = 500;
 const height = 320;
 
 function renderTensorDiagram(container, nodes, edges) {
-  console.log("renderTensorDiagram", { container, nodes, edges });
+  // console.log("renderTensorDiagram", { container, nodes, edges });
 
   const svg = d3
     .select(container)
@@ -44,7 +44,6 @@ function renderTensorDiagram(container, nodes, edges) {
   }
 
   simulation.on("tick", () => {
-    console.log("tick");
     link.attr("d", calculateLinkD);
     node.attr("transform", (d) => `translate(${d.x}, ${d.y})`);
   });
@@ -68,7 +67,7 @@ function renderTensorDiagram(container, nodes, edges) {
   link
     .append("text")
     .text((d) => d.label)
-    .attr("style", (d) => `fill: ${d.color};`)
+    .attr("class", (d) => d.class_name)
     // .attr("class", "text-slate-900 dark:text-white")
     // Offset if it's a loop
     .attr("x", ({ source, target }) =>
@@ -98,7 +97,7 @@ function renderTensorDiagram(container, nodes, edges) {
   node
     .append("text")
     .text((d) => d.label)
-    .attr("style", (d) => `fill: ${d.color};`);
+    .attr("class", (d) => d.class_name);
   // .attr("x", 25)
   // .attr("y", 5);
 }

@@ -1133,7 +1133,7 @@ end = struct
 
   let%expect_test "show_loops" =
     let go (rewrite : Rewrite.t) =
-      show_loops rewrite |> Pyloops.pp (fun _ -> "#000") Fmt.stdout
+      show_loops rewrite |> Pyloops.pp (fun _ -> "") Fmt.stdout
     in
 
     go ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]);

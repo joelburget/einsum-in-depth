@@ -134,9 +134,9 @@ end = struct
           mark_close_stag =
             (fun _ ->
               match Stack.pop stack with
-              | color, q ->
+              | class_name, q ->
                   q |> Queue.to_seq |> List.of_seq
-                  |> span ~at:[ mk_color_style color ]
+                  |> span ~at:(classes class_name)
                   |> add_at_current_level;
                   ""
               | exception Stack.Empty -> "");
@@ -478,10 +478,10 @@ let tutorial container =
 
   let render_explanation rewrite code_preference _syntax_preference =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
-    let get_color edge_name =
+    let text_color edge_name =
       match Hashtbl.find_opt edge_attributes edge_name with
-      | None -> if Colors.prefers_dark () then "#fff" else "#000"
-      | Some { Colors.color; _ } -> color
+      | None -> ""
+      | Some Colors.{ text_classes; _ } -> text_classes
     in
     let _framework_name, framework_code_name =
       match code_preference with
@@ -491,10 +491,10 @@ let tutorial container =
 
     let pyloops = Einops.Explain.show_loops rewrite in
     let python_code, code_ppf = make_formatter () in
-    Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp get_color) pyloops;
+    Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp text_color) pyloops;
     let frob_python_code, frob_code_ppf = make_formatter () in
     Fmt.pf frob_code_ppf "%a@?"
-      (Einops.Pyloops.pp ~use_frob:code_preference get_color)
+      (Einops.Pyloops.pp ~use_frob:code_preference text_color)
       pyloops;
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
@@ -506,9 +506,9 @@ let tutorial container =
           txt'
             "In outer loops, we iterate over all free indices to generate each \
              output element (";
-          span (list_variables get_color free_indices);
+          span (list_variables text_color free_indices);
           txt' "), while in inner loops we iterate over all summation indices (";
-          span (list_variables get_color summation_indices);
+          span (list_variables text_color summation_indices);
           txt'
             ") to sum over each product term. First, here's equivalent, \
              simplified (but slow, because it's not vectorized) Python code. \

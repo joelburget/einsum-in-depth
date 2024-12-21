@@ -3,11 +3,17 @@ module String_set = Set.Make (String)
 
 let default_height = 160
 let default_width = 200
-let fill_color = "#ccc"
+
+(* let fill_color = "#ccc" *)
+let fill_class_name = "fill-slate-500"
 let isometric () = Jv.get Jv.global "isometric"
 let classes = Frontend_util.classes
 let duration = Jv.of_float 2.
 let array_max arr = Array.fold_left max min_float arr
+
+let get_class_name edge_attributes label =
+  let Colors.{ fill_classes; _ } = Hashtbl.find edge_attributes label in
+  fill_classes
 
 module EdgeAnimation = struct
   type edge = Height | Width
@@ -54,7 +60,7 @@ module Rectangle : sig
     ?left:float ->
     ?right:float ->
     ?plane_view:Plane_view.t ->
-    ?fill_color:string ->
+    ?class_name:string ->
     unit ->
     opts
 
@@ -98,13 +104,13 @@ end = struct
 
   type opts = Jv.t
 
-  let opts ?top ?left ?right ?plane_view ?fill_color () =
+  let opts ?top ?left ?right ?plane_view ?class_name () =
     let o = Jv.obj [||] in
     Jv.Float.set_if_some o "top" top;
     Jv.Float.set_if_some o "left" left;
     Jv.Float.set_if_some o "right" right;
     Jv.Jstr.set_if_some o "planeView" plane_view;
-    Jv.set_if_some o "fillColor" (Option.map Jv.of_string fill_color);
+    Jv.set_if_some o "className" (Option.map Jv.of_string class_name);
     o
 
   let jobj () = Jv.get (isometric ()) "IsometricRectangle"
@@ -200,7 +206,7 @@ module Text : sig
 
   val opts :
     ?font_size:float ->
-    ?fill_color:string ->
+    ?class_name:string ->
     ?stroke_width:float ->
     ?top:float ->
     ?left:float ->
@@ -217,12 +223,12 @@ end = struct
 
   type opts = Jv.t
 
-  let opts ?(font_size = 18.) ?(fill_color = "#666") ?(stroke_width = 0.) ?top
-      ?left ?right ?plane_view text =
+  let opts ?(font_size = 18.) ?(class_name = "fill-slate-500")
+      ?(stroke_width = 0.) ?top ?left ?right ?plane_view text =
     let o = Jv.obj [||] in
     Jv.Float.set o "fontSize" font_size;
     Jv.Jstr.set o "fontWeight" (Jstr.v "500");
-    Jv.Jstr.set o "fillColor" (Jstr.v fill_color);
+    Jv.Jstr.set o "className" (Jstr.v class_name);
     Jv.Float.set o "strokeWidth" stroke_width;
     Jv.Float.set_if_some o "top" top;
     Jv.Float.set_if_some o "left" left;
@@ -315,15 +321,15 @@ module Cube : sig
     width:string * float array ->
     depth:string * float array ->
     draw_diag:bool ->
-    edge_colors:Colors.edge_colors ->
-    fill_color:string ->
+    edge_attributes:Colors.edge_attributes ->
+    class_name:string ->
     unit ->
     t
 end = struct
   type t = Jv.t
 
   let create ~height:(height_label, height) ~width:(width_label, width)
-      ~depth:(depth_label, depth) ~draw_diag ~edge_colors ~fill_color () =
+      ~depth:(depth_label, depth) ~draw_diag ~edge_attributes ~class_name () =
     let max_height = array_max height in
     let max_width = array_max width in
     let max_depth = array_max depth in
@@ -343,7 +349,7 @@ end = struct
                    })
                width depth)
             ~opts:
-              (opts ~top:max_height ~fill_color ~plane_view:Plane_view.top ())
+              (opts ~top:max_height ~class_name ~plane_view:Plane_view.top ())
             ();
           create
             (Array.map2
@@ -352,7 +358,7 @@ end = struct
                    { height; width; top = 0.; left = 0.; right = 0. })
                height width)
             ~opts:
-              (opts ~right:max_depth ~fill_color ~plane_view:Plane_view.front ())
+              (opts ~right:max_depth ~class_name ~plane_view:Plane_view.front ())
             ();
           create
             (Array.map2
@@ -361,31 +367,32 @@ end = struct
                    { height; width = d_as_w; top = 0.; left = 0.; right = 0. })
                height depth)
             ~opts:
-              (opts ~left:max_width ~fill_color ~plane_view:Plane_view.side ())
+              (opts ~left:max_width ~class_name ~plane_view:Plane_view.side ())
             ();
         ]
     in
+    let get_class_name = get_class_name edge_attributes in
     let labels =
       [
         Text.create
           ~opts:
             (Text.opts ~top:(max_height *. 1.25) ~left:(max_width *. 0.65)
                ~right:0.
-               ~fill_color:(Hashtbl.find edge_colors height_label)
+               ~class_name:(get_class_name height_label)
                height_label)
           ();
         Text.create
           ~opts:
             (Text.opts ~top:(max_height *. 1.25) ~left:0.
                ~right:(max_depth *. 0.5)
-               ~fill_color:(Hashtbl.find edge_colors depth_label)
+               ~class_name:(get_class_name depth_label)
                depth_label)
           ();
         Text.create
           ~opts:
             (Text.opts ~top:(max_height *. 0.5) ~left:(max_width *. 1.2)
                ~right:0.
-               ~fill_color:(Hashtbl.find edge_colors width_label)
+               ~class_name:(get_class_name width_label)
                width_label)
           ();
       ]
@@ -430,19 +437,22 @@ module Tensor : sig
 
   val create :
     draw_diag:bool ->
-    edge_colors:Colors.edge_colors ->
+    edge_attributes:Colors.edge_attributes ->
     (string * float array) list ->
     t
 end = struct
   type t = Jv.t
 
-  let create ~draw_diag ~edge_colors = function
+  let create ~draw_diag ~edge_attributes =
+    let get_class_name = get_class_name edge_attributes in
+    function
     | [ (dim1, height) ] ->
-        let color = Hashtbl.(find edge_colors dim1) in
         let children =
           [
             Rectangle.create
-              ~opts:(Rectangle.opts ~plane_view:Plane_view.top ~fill_color ())
+              ~opts:
+                (Rectangle.opts ~plane_view:Plane_view.top
+                   ~class_name:fill_class_name ())
               (Array.map
                  (fun height ->
                    Rectangle.Animate_dimensions.
@@ -454,22 +464,21 @@ end = struct
               ~opts:
                 (Text.opts
                    ~left:(array_max height *. 0.5)
-                   ~right:(-1.4) ~fill_color:color dim1)
+                   ~right:(-1.4) ~class_name:(get_class_name dim1) dim1)
               ();
           ]
         in
         Group.create children
     | [ (dim1, height); (dim2, width) ] ->
-        let color1, color2 =
-          Hashtbl.(find edge_colors dim1, find edge_colors dim2)
-        in
         Fmt.(
           pr "@[Tensor.create rectangle (%s, [%a]) (%s, [%a])@]@." dim1
             (array ~sep:semi float) height dim2 (array ~sep:semi float) width);
         let children =
           [
             Rectangle.create
-              ~opts:(Rectangle.opts ~plane_view:Plane_view.top ~fill_color ())
+              ~opts:
+                (Rectangle.opts ~plane_view:Plane_view.top
+                   ~class_name:fill_class_name ())
               (Array.map2
                  (fun height width ->
                    Rectangle.Animate_dimensions.
@@ -481,14 +490,14 @@ end = struct
                 (Text.opts
                    ~left:(array_max height *. 0.5)
                    ~right:(array_max width *. -0.5)
-                   ~fill_color:color1 dim1)
+                   ~class_name:(get_class_name dim1) dim1)
               ();
             Text.create
               ~opts:
                 (Text.opts
                    ~left:(array_max height *. -0.5)
                    ~right:(array_max width *. 0.5)
-                   ~fill_color:color2 dim2)
+                   ~class_name:(get_class_name dim2) dim2)
               ();
           ]
         in
@@ -506,7 +515,8 @@ end = struct
         in
         Group.create (children @ paths)
     | [ height; width; depth ] ->
-        Cube.create ~height ~width ~depth ~draw_diag ~edge_colors ~fill_color ()
+        Cube.create ~height ~width ~depth ~draw_diag ~edge_attributes
+          ~class_name:fill_class_name ()
     | [] -> Text.create ~opts:(Text.opts "(scalar)") ()
     | invalid ->
         failwith
@@ -530,17 +540,8 @@ module Scene : sig
 end = struct
   let render_unsafe ?(scale = 10.) ?(height = default_height)
       ?(width = default_width) ~edge_attributes lhs rhs =
-    let edge_colors =
-      edge_attributes |> Hashtbl.to_seq
-      |> Seq.map (fun (k, v) -> (k, v.Colors.color))
-      |> Hashtbl.of_seq
-    in
-    let get_length label = (Hashtbl.find edge_attributes label).length in
-    let get_color edge_name =
-      match Hashtbl.find_opt edge_attributes edge_name with
-      | None -> if Colors.prefers_dark () then "#fff" else "#000"
-      | Some { Colors.color; _ } -> color
-    in
+    let get_length label = (Hashtbl.find edge_attributes label).Colors.length in
+    let get_classes edge_name = get_class_name edge_attributes edge_name in
     let rows = Queue.create () in
     let div, span, txt' = Brr.El.(div, span, txt') in
     let Einops.Steps.{ diagonalized; broadcast } =
@@ -571,7 +572,7 @@ end = struct
         (fun tensor ->
           let canvas, container = mk_canvas () in
           let tensor =
-            Tensor.create ~draw_diag:false ~edge_colors
+            Tensor.create ~draw_diag:false ~edge_attributes
               (List.map
                  (fun label ->
                    (label, [| get_length label; get_length label |]))
@@ -597,7 +598,7 @@ end = struct
             (fun tensor ->
               let canvas, container = mk_canvas () in
               let tensor =
-                Tensor.create ~draw_diag:true ~edge_colors
+                Tensor.create ~draw_diag:true ~edge_attributes
                   (List.map
                      (fun label ->
                        (label, [| get_length label; get_length label |]))
@@ -677,7 +678,7 @@ end = struct
               (*              (brackets (array ~sep:semi float))))) *)
               (*     axis_spec); *)
               let tensor =
-                Tensor.create ~draw_diag:false ~edge_colors axis_spec
+                Tensor.create ~draw_diag:false ~edge_attributes axis_spec
               in
               Canvas.add_child canvas tensor;
               container)
@@ -697,7 +698,7 @@ end = struct
           Queue.add (div [ txt' "Pointwise Multiply" ]) rows;
           let canvas, container = mk_canvas () in
           let tensor =
-            Tensor.create ~draw_diag:false ~edge_colors
+            Tensor.create ~draw_diag:false ~edge_attributes
               (List.map
                  (fun label ->
                    (label, [| get_length label; get_length label |]))
@@ -718,7 +719,7 @@ end = struct
           (div
              [
                txt' "Contract ";
-               span (Frontend_util.list_variables get_color axes_to_contract);
+               span (Frontend_util.list_variables get_classes axes_to_contract);
              ])
           rows;
         let canvas, container = mk_canvas () in
@@ -739,7 +740,9 @@ end = struct
         (*        (parens *)
         (*           (pair ~sep:comma string (brackets (array ~sep:semi float))))) *)
         (*     axis_spec); *)
-        let tensor = Tensor.create ~draw_diag:false ~edge_colors axis_spec in
+        let tensor =
+          Tensor.create ~draw_diag:false ~edge_attributes axis_spec
+        in
 
         Canvas.add_child canvas tensor;
         div [ container ])

@@ -447,10 +447,8 @@ let rec unsnoc = function
       let init, last = unsnoc xs in
       (x :: init, last)
 
-let mk_color_style color = At.style (Jstr.v Fmt.(str "color: %a" string color))
-
-let list_variables get_color vars =
-  let mk_code x = code ~at:[ mk_color_style (get_color x) ] [ txt' x ] in
+let list_variables get_classes vars =
+  let mk_code x = code ~at:(classes (get_classes x)) [ txt' x ] in
   match vars with
   | [] -> [ txt' "in his case there are none" ]
   | [ x ] -> [ mk_code x ]

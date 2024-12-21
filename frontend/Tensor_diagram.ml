@@ -2,6 +2,7 @@ open Tensor_playground.Einops
 module String_set = Set.Make (String)
 
 let classes = Frontend_util.classes
+let label_class_name = function Colors.{ fill_classes; _ } -> fill_classes
 
 module Node : sig
   type node_type = Edge | Tensor
@@ -10,7 +11,7 @@ module Node : sig
     id : string;
     label : string;
     node_type : node_type;
-    color : string;
+    class_name : string;
   }
 
   val to_jv : t -> Jv.t
@@ -21,15 +22,15 @@ end = struct
     id : string;
     label : string;
     node_type : node_type;
-    color : string;
+    class_name : string;
   }
 
-  let to_jv { id; label; color; node_type } =
+  let to_jv { id; label; class_name; node_type } =
     Jv.obj
       [|
         ("id", Jv.of_string id);
         ("label", Jv.of_string label);
-        ("color", Jv.of_string color);
+        ("class_name", Jv.of_string class_name);
         ( "type",
           Jv.of_string
             (match node_type with Edge -> "edge" | Tensor -> "tensor") );
@@ -37,16 +38,26 @@ end = struct
 end
 
 module Edge : sig
-  type t = { color : string; label : string; source : string; target : string }
+  type t = {
+    class_name : string;
+    label : string;
+    source : string;
+    target : string;
+  }
 
   val to_jv : t -> Jv.t
 end = struct
-  type t = { color : string; label : string; source : string; target : string }
+  type t = {
+    class_name : string;
+    label : string;
+    source : string;
+    target : string;
+  }
 
-  let to_jv { color; label; source; target } =
+  let to_jv { class_name; label; source; target } =
     Jv.obj
       [|
-        ("color", Jv.of_string color);
+        ("class_name", Jv.of_string class_name);
         ("label", Jv.of_string label);
         ("source", Jv.of_string source);
         ("target", Jv.of_string target);
@@ -60,7 +71,7 @@ let rec nested_list_count target = function
       (if List.mem target lst then 1 else 0) + nested_list_count target lsts
 
 let draw_einsum edge_attributes lhs rhs =
-  let get_color name = (Hashtbl.find edge_attributes name).Colors.color in
+  let get_color name = Hashtbl.find edge_attributes name in
 
   let Rewrite.{ free; summation } = Rewrite.indices (lhs, rhs) in
   let self_contracted, contracted_in_pair, contracted_in_group =
@@ -78,14 +89,15 @@ let draw_einsum edge_attributes lhs rhs =
     lhs
     |> List.mapi (fun i _x ->
            let id = Fmt.str "tensor-%d" i in
-           Node.{ id; label = ""; node_type = Tensor; color = "" })
+           Node.{ id; label = ""; node_type = Tensor; class_name = "" })
     |> Array.of_list
   in
 
   let uncontracted_nodes =
     rhs
     |> List.map (fun x ->
-           Node.{ id = x; label = x; node_type = Edge; color = get_color x })
+           let class_name = label_class_name (get_color x) in
+           Node.{ id = x; label = x; node_type = Edge; class_name })
     |> Array.of_list
   in
 
@@ -93,7 +105,7 @@ let draw_einsum edge_attributes lhs rhs =
     contracted_in_group |> String_set.to_list
     |> List.map (fun x ->
            let id = Fmt.str "group-%s" x in
-           Node.{ id; label = ""; node_type = Edge; color = "" })
+           Node.{ id; label = ""; node_type = Edge; class_name = "" })
     |> Array.of_list
   in
 
@@ -136,14 +148,16 @@ let draw_einsum edge_attributes lhs rhs =
       (match self_contracted' with
       | [] -> ()
       | _ ->
-          let color =
-            match self_contracted' with [ x ] -> get_color x | _ -> ""
+          let class_name =
+            match self_contracted' with
+            | [ x ] -> label_class_name (get_color x)
+            | _ -> ""
           in
           let node_id = Fmt.str "tensor-%d" source_n in
           let edge =
             Edge.
               {
-                color;
+                class_name;
                 label = Fmt.(str "%a" (list ~sep:comma string) self_contracted');
                 source = node_id;
                 target = node_id;
@@ -169,7 +183,7 @@ let draw_einsum edge_attributes lhs rhs =
             let edge =
               Edge.
                 {
-                  color = get_color name;
+                  class_name = label_class_name (get_color name);
                   label;
                   source = Fmt.str "tensor-%d" source_n;
                   target;

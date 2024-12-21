@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@elchininet/isometric':
-        specifier: file:/Users/joel/code/git-isometric
-        version: file:../../git-isometric(jsdom@18.1.1)
+        specifier: git+https://github.com/joelburget/isometric.git
+        version: https://codeload.github.com/joelburget/isometric/tar.gz/cdba848d19f299f629f3e8da2364526f19e1bf70(jsdom@18.1.1)
       '@tailwindcss/typography':
         specifier: ^0.5.15
         version: 0.5.15(tailwindcss@3.4.16)
@@ -54,8 +54,9 @@ packages:
     resolution: {integrity: sha512-Ed61U6XJc3CVRfkERJWDz4dJwKe7iLmmJsbOGu9wSloNSFttHV0I8g6UAgb7qnK5ly5bGLPd4oXZlxCdANBOWQ==}
     engines: {node: '>=6.9.0'}
 
-  '@elchininet/isometric@file:../../git-isometric':
-    resolution: {directory: ../../git-isometric, type: directory}
+  '@elchininet/isometric@https://codeload.github.com/joelburget/isometric/tar.gz/cdba848d19f299f629f3e8da2364526f19e1bf70':
+    resolution: {tarball: https://codeload.github.com/joelburget/isometric/tar.gz/cdba848d19f299f629f3e8da2364526f19e1bf70}
+    version: 3.10.1
     engines: {node: '>=12.22.0'}
     peerDependencies:
       jsdom: ^18.0.1
@@ -1714,7 +1715,7 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.25.9': {}
 
-  '@elchininet/isometric@file:../../git-isometric(jsdom@18.1.1)':
+  '@elchininet/isometric@https://codeload.github.com/joelburget/isometric/tar.gz/cdba848d19f299f629f3e8da2364526f19e1bf70(jsdom@18.1.1)':
     dependencies:
       jsdom: 18.1.1
 
