@@ -32,6 +32,19 @@ end
 module Rectangle : sig
   type t = Jv.t
 
+  module Animate_dimensions : sig
+    type t = {
+      width : float;
+      height : float;
+      top : float;
+      left : float;
+      right : float;
+    }
+
+    (* val pp : t Fmt.t *)
+    (* val to_jv : t -> Jv.t *)
+  end
+
   include Jv.CONV with type t := Jv.t
 
   type opts = Jv.t
@@ -45,10 +58,41 @@ module Rectangle : sig
     unit ->
     opts
 
-  val create :
-    ?opts:opts -> height:float array -> width:float array -> unit -> t
+  val create : ?opts:opts -> Animate_dimensions.t array -> unit -> t
 end = struct
   type t = Jv.t
+
+  module Animate_dimensions = struct
+    type t = {
+      width : float;
+      height : float;
+      top : float;
+      left : float;
+      right : float;
+    }
+
+    let pp =
+      Fmt.(
+        braces
+          (record ~sep:semi
+             [
+               field "width" (fun t -> t.width) float;
+               field "height" (fun t -> t.height) float;
+               field "top" (fun t -> t.top) float;
+               field "left" (fun t -> t.left) float;
+               field "right" (fun t -> t.right) float;
+             ]))
+
+    let to_jv { width; height; top; left; right } =
+      Jv.obj
+        [|
+          ("width", Jv.of_float width);
+          ("height", Jv.of_float height);
+          ("top", Jv.of_float top);
+          ("left", Jv.of_float left);
+          ("right", Jv.of_float right);
+        |]
+  end
 
   include (Jv.Id : Jv.CONV with type t := t)
 
@@ -65,34 +109,34 @@ end = struct
 
   let jobj () = Jv.get (isometric ()) "IsometricRectangle"
 
-  let add_anim side_name values face =
+  let animate_dimensions values face =
     if Array.length values = 1 then face
     else (
-      Fmt.pr "@[add_anim: %s: [@[%a@]]@]@." side_name
-        Fmt.(list ~sep:comma float)
+      Fmt.pr "@[animate_dimensions: [@[%a@]]@]@."
+        Fmt.(list ~sep:semi Animate_dimensions.pp)
         (Array.to_list values);
-      let anim_opts =
-        Jv.obj
-          [|
-            ("property", Jv.of_string side_name);
-            ("duration", duration);
-            ("values", Jv.of_array Jv.of_float values);
-          |]
-      in
-      Jv.call face "addAnimation" [| anim_opts |])
+      Jv.call face "animateDimensions"
+        [| Jv.of_array Animate_dimensions.to_jv values; duration |])
 
-  let create ?(opts = Jv.undefined) ~height ~width () =
+  let add_anim side_name values face =
+    let anim_opts =
+      Jv.obj
+        [|
+          ("property", Jv.of_string side_name);
+          ("duration", duration);
+          ("values", Jv.of_array Jv.of_float values);
+        |]
+    in
+    Jv.call face "addAnimation" [| anim_opts |]
+
+  let create ?(opts = Jv.undefined) values () =
     Fmt.(
-      pr "@[Rectangle.create [%a] [%a]@]@." (array ~sep:semi float) height
-        (array ~sep:semi float) width);
-    (* weird hack: *)
-    Jv.Float.set opts "height"
-      (if Array.length height > 1 then 0.1 else height.(0));
-    Jv.Float.set opts "width"
-      (if Array.length width > 1 then 0.1 else width.(0));
-    (* end weird hack *)
+      pr "@[Rectangle.create [%a]@]@."
+        (array ~sep:semi Animate_dimensions.pp)
+        values);
     Jv.new' (jobj ()) [| opts |]
-    |> add_anim "height" height |> add_anim "width" width
+    |> add_anim "top" (Array.map (fun x -> x.Animate_dimensions.top) values)
+    |> animate_dimensions values
 end
 
 module Point : sig
@@ -286,15 +330,36 @@ end = struct
     let faces =
       Rectangle.
         [
-          create ~height:width ~width:depth
+          create
+            (Array.map2
+               (fun w_as_h d_as_w ->
+                 Animate_dimensions.
+                   {
+                     height = w_as_h;
+                     width = d_as_w;
+                     top = 0.;
+                     left = 0.;
+                     right = 0.;
+                   })
+               width depth)
             ~opts:
               (opts ~top:max_height ~fill_color ~plane_view:Plane_view.top ())
             ();
-          create ~height ~width
+          create
+            (Array.map2
+               (fun height width ->
+                 Animate_dimensions.
+                   { height; width; top = 0.; left = 0.; right = 0. })
+               height width)
             ~opts:
               (opts ~right:max_depth ~fill_color ~plane_view:Plane_view.front ())
             ();
-          create ~height ~width:depth
+          create
+            (Array.map2
+               (fun height d_as_w ->
+                 Animate_dimensions.
+                   { height; width = d_as_w; top = 0.; left = 0.; right = 0. })
+               height depth)
             ~opts:
               (opts ~left:max_width ~fill_color ~plane_view:Plane_view.side ())
             ();
@@ -378,8 +443,11 @@ end = struct
           [
             Rectangle.create
               ~opts:(Rectangle.opts ~plane_view:Plane_view.top ~fill_color ())
-              ~height
-              ~width:(Array.map (fun _ -> 0.) height)
+              (Array.map
+                 (fun height ->
+                   Rectangle.Animate_dimensions.
+                     { height; width = 0.; top = 0.; left = 0.; right = 0. })
+                 height)
               ();
             (* Path *)
             Text.create
@@ -395,14 +463,19 @@ end = struct
         let color1, color2 =
           Hashtbl.(find edge_colors dim1, find edge_colors dim2)
         in
-        (* Fmt.( *)
-        (*   pr "@[Tensor.create rectangle (%s, [%a]) (%s, [%a])@]@." dim1 *)
-        (*     (array ~sep:semi float) height dim2 (array ~sep:semi float) width); *)
+        Fmt.(
+          pr "@[Tensor.create rectangle (%s, [%a]) (%s, [%a])@]@." dim1
+            (array ~sep:semi float) height dim2 (array ~sep:semi float) width);
         let children =
           [
             Rectangle.create
               ~opts:(Rectangle.opts ~plane_view:Plane_view.top ~fill_color ())
-              ~height ~width ();
+              (Array.map2
+                 (fun height width ->
+                   Rectangle.Animate_dimensions.
+                     { height; width; top = 0.; left = 0.; right = 0. })
+                 height width)
+              ();
             Text.create
               ~opts:
                 (Text.opts
@@ -499,7 +572,10 @@ end = struct
           let canvas, container = mk_canvas () in
           let tensor =
             Tensor.create ~draw_diag:false ~edge_colors
-              (List.map (fun label -> (label, [| get_length label |])) tensor)
+              (List.map
+                 (fun label ->
+                   (label, [| get_length label; get_length label |]))
+                 tensor)
           in
           Canvas.add_child canvas tensor;
           container)
@@ -523,7 +599,8 @@ end = struct
               let tensor =
                 Tensor.create ~draw_diag:true ~edge_colors
                   (List.map
-                     (fun label -> (label, [| get_length label |]))
+                     (fun label ->
+                       (label, [| get_length label; get_length label |]))
                      tensor)
               in
               Canvas.add_child canvas tensor;
@@ -587,7 +664,7 @@ end = struct
                     let base_length = get_length label in
                     let lengths =
                       if List.mem label animate_edges then [| 0.; base_length |]
-                      else [| base_length |]
+                      else [| base_length; base_length |]
                     in
                     (label, lengths))
                   broadcast
@@ -622,7 +699,8 @@ end = struct
           let tensor =
             Tensor.create ~draw_diag:false ~edge_colors
               (List.map
-                 (fun label -> (label, [| get_length label |]))
+                 (fun label ->
+                   (label, [| get_length label; get_length label |]))
                  broadcast)
           in
           Canvas.add_child canvas tensor;
@@ -650,7 +728,7 @@ end = struct
               let base_length = get_length label in
               let lengths =
                 if List.mem label axes_to_contract then [| base_length; 0. |]
-                else [| base_length |]
+                else [| base_length; base_length |]
               in
               (label, lengths))
             broadcast

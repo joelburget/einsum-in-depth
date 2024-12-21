@@ -9,7 +9,7 @@ type validated_inputs = unit
 let code' text = code [ txt' text ]
 
 let text_button_classes =
-  classes "not-prose text-indigo-500 hover:text-gray-700"
+  classes "not-prose text-indigo-500 dark:text-indigo-200 hover:text-gray-700"
 
 let validate_path n_tensors path =
   if List.length path = 0 then None

@@ -12,6 +12,7 @@ pnpm tailwindcss -i input.css -o output.css
 cd ..
 dune build -w
 cd _build/default/frontend
+pnpm i
 pnpm start
 ```
 

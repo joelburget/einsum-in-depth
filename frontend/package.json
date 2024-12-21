@@ -7,7 +7,7 @@
     "tailwindcss": "^3.4.0"
   },
   "dependencies": {
-    "@elchininet/isometric": "^3.10.0",
+    "@elchininet/isometric": "git+https://github.com/joelburget/isometric.git",
     "@tailwindcss/typography": "^0.5.15",
     "cose-base": "^2.2.0",
     "cytoscape": "^3.30.4",
