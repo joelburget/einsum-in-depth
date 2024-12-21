@@ -195,7 +195,7 @@ let draw_einsum edge_attributes lhs rhs =
 
   let edges = edges |> Queue.to_seq |> Array.of_seq in
 
-  let el = Brr.El.div ~at:(classes "mx-auto bg-white dark:bg-[#00000080]") [] in
+  let el = Brr.El.div ~at:(classes "mx-auto") [] in
 
   let _ =
     Jv.call Jv.global "renderTensorDiagram"

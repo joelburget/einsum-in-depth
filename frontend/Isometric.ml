@@ -3,8 +3,6 @@ module String_set = Set.Make (String)
 
 let default_height = 160
 let default_width = 200
-
-(* let fill_color = "#ccc" *)
 let fill_class_name = "fill-slate-500"
 let isometric () = Jv.get Jv.global "isometric"
 let classes = Frontend_util.classes
@@ -561,7 +559,11 @@ end = struct
     let mk_canvas () =
       let container = div [] in
       let canvas =
-        Canvas.create ~opts:(Canvas.opts ~container ~scale ~height ~width ()) ()
+        Canvas.create
+          ~opts:
+            (Canvas.opts ~background_color:"rgba(0, 0, 0, 0)" ~container ~scale
+               ~height ~width ())
+          ()
       in
       (canvas, container)
     in
