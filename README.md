@@ -17,3 +17,10 @@ pnpm start
 ```
 
 You should see "Server running at http://localhost:1234".
+
+## Deploy
+
+```
+cd _build/default/frontend
+netlify deploy .
+```
