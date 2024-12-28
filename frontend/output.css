@@ -1188,6 +1188,10 @@ video {
   margin-top: 0.75rem;
 }
 
+.mt-4 {
+  margin-top: 1rem;
+}
+
 .block {
   display: block;
 }
@@ -1342,6 +1346,14 @@ video {
 
 .gap-3 {
   gap: 0.75rem;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.gap-4 {
+  gap: 1rem;
 }
 
 .space-x-8 > :not([hidden]) ~ :not([hidden]) {
@@ -2045,10 +2057,6 @@ video {
 }
 
 @media (prefers-color-scheme: dark) {
-  .dark\:bg-\[\#00000080\] {
-    background-color: #00000080;
-  }
-
   .dark\:bg-\[\#fff\] {
     --tw-bg-opacity: 1;
     background-color: rgb(255 255 255 / var(--tw-bg-opacity, 1));
