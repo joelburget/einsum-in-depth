@@ -384,7 +384,7 @@ let tutorial container =
   in
 
   let logger, c_input, current_input =
-    input' ~at:input_classes "a b ->" clicked_op_in_text_e
+    input' ~at:input_classes "a b, b c -> a c" clicked_op_in_text_e
   in
   Logr.may_hold logger;
 
