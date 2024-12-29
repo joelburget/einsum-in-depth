@@ -352,12 +352,11 @@ module Icons = struct
     svg
       ~at:
         ([
-           fill "none";
            viewbox "0 0 24 24";
            svg_at "stroke-width" "1.5";
            svg_at "stroke" "currentColor";
          ]
-        @ svg_classes "size-5 inline")
+        @ svg_classes "size-5 inline stroke-slate-900 dark:stroke-white")
       [
         path
           ~at:
@@ -380,7 +379,9 @@ module Icons = struct
 
   let x =
     svg
-      ~at:(viewbox "0 0 300 271" :: svg_classes "size-5 inline")
+      ~at:
+        (viewbox "0 0 300 271"
+        :: svg_classes "size-5 inline fill-slate-900 dark:fill-white")
       [
         path
           ~at:
@@ -395,12 +396,13 @@ module Icons = struct
 
   let github =
     svg
-      ~at:(viewbox "0 0 98 96" :: svg_classes "size-5 inline")
+      ~at:
+        (viewbox "0 0 98 96"
+        :: svg_classes "size-5 inline fill-slate-900 dark:fill-white")
       [
         path
           ~at:
             [
-              fill "#24292f";
               svg_at "fill-rule" "evenodd";
               svg_at "clip-rule" "evenodd";
               d
@@ -1153,34 +1155,22 @@ let tutorial container =
           ];
         p
           ~at:(classes "flex flex-row gap-4 mt-4")
-          [
-            span
-              [
-                txt' "Built by ";
-                El.a
-                  ~at:
-                    [
-                      At.href (Jstr.v "https://joelburget.com");
-                      At.v (Jstr.v "target") (Jstr.v "_blank");
-                    ]
-                  [ txt' "Joel Burget"; embed_svg Icons.website ];
-              ];
-            El.a
-              ~at:
-                [
-                  At.href (Jstr.v "https://x.com/joel_burget");
-                  At.v (Jstr.v "target") (Jstr.v "_blank");
-                ]
-              [ embed_svg Icons.x ];
-            El.a
-              ~at:
-                [
-                  At.href
-                    (Jstr.v "https://github.com/joelburget/einsum-tutorial");
-                  At.v (Jstr.v "target") (Jstr.v "_blank");
-                ]
-              [ embed_svg Icons.github ];
-          ];
+          (let icon_link link_location icon =
+             El.a
+               ~at:
+                 [
+                   At.href (Jstr.v link_location);
+                   At.v (Jstr.v "target") (Jstr.v "_blank");
+                 ]
+               [ embed_svg icon ]
+           in
+           [
+             txt' "Built by Joel Burget ";
+             icon_link "https://joelburget.com" Icons.website;
+             icon_link "https://x.com/joel_burget" Icons.x;
+             icon_link "https://github.com/joelburget/einsum-tutorial"
+               Icons.github;
+           ]);
       ]
   in
 

@@ -1348,10 +1348,6 @@ video {
   gap: 0.75rem;
 }
 
-.gap-2 {
-  gap: 0.5rem;
-}
-
 .gap-4 {
   gap: 1rem;
 }
@@ -1548,8 +1544,16 @@ video {
   fill: #64748b;
 }
 
+.fill-slate-900 {
+  fill: #0f172a;
+}
+
 .fill-teal-800 {
   fill: #115e59;
+}
+
+.stroke-slate-900 {
+  stroke: #0f172a;
 }
 
 .p-3 {
@@ -2162,8 +2166,16 @@ video {
     fill: #f5f5f4;
   }
 
+  .dark\:fill-white {
+    fill: #fff;
+  }
+
   .dark\:fill-yellow-100 {
     fill: #fef9c3;
+  }
+
+  .dark\:stroke-white {
+    stroke: #fff;
   }
 
   .dark\:text-\[\#fff\] {
