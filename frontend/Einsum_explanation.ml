@@ -427,7 +427,7 @@ end
 type syntax_preference = Friendly | Original
 
 let tutorial container =
-  let overlay_hidden_s, set_overlay_hidden = S.create false in
+  let overlay_hidden_s, set_overlay_hidden = S.create true in
   let syntax_preference_s, set_syntax_preference = S.create None in
 
   let close_button =
