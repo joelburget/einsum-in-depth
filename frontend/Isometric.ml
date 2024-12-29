@@ -59,10 +59,12 @@ module Rectangle : sig
     ?right:float ->
     ?plane_view:Plane_view.t ->
     ?class_name:string ->
+    width:float ->
+    height:float ->
     unit ->
     opts
 
-  val create : ?opts:opts -> Animate_dimensions.t array -> unit -> t
+  val create : opts:opts -> Animate_dimensions.t array -> unit -> t
 end = struct
   type t = Jv.t
 
@@ -102,13 +104,15 @@ end = struct
 
   type opts = Jv.t
 
-  let opts ?top ?left ?right ?plane_view ?class_name () =
+  let opts ?top ?left ?right ?plane_view ?class_name ~width ~height () =
     let o = Jv.obj [||] in
     Jv.Float.set_if_some o "top" top;
     Jv.Float.set_if_some o "left" left;
     Jv.Float.set_if_some o "right" right;
     Jv.Jstr.set_if_some o "planeView" plane_view;
     Jv.set_if_some o "className" (Option.map Jv.of_string class_name);
+    Jv.Float.set o "width" width;
+    Jv.Float.set o "height" height;
     o
 
   let jobj () = Jv.get (isometric ()) "IsometricRectangle"
@@ -133,7 +137,7 @@ end = struct
     in
     Jv.call face "addAnimation" [| anim_opts |]
 
-  let create ?(opts = Jv.undefined) values () =
+  let create ~opts values () =
     Fmt.(
       pr "@[Rectangle.create [%a]@]@."
         (array ~sep:semi Animate_dimensions.pp)
@@ -347,7 +351,8 @@ end = struct
                    })
                width depth)
             ~opts:
-              (opts ~top:max_height ~class_name ~plane_view:Plane_view.top ())
+              (opts ~top:max_height ~class_name ~plane_view:Plane_view.top
+                 ~width:max_depth ~height:max_width ())
             ();
           create
             (Array.map2
@@ -356,7 +361,8 @@ end = struct
                    { height; width; top = 0.; left = 0.; right = 0. })
                height width)
             ~opts:
-              (opts ~right:max_depth ~class_name ~plane_view:Plane_view.front ())
+              (opts ~right:max_depth ~class_name ~plane_view:Plane_view.front
+                 ~width:max_width ~height:max_height ())
             ();
           create
             (Array.map2
@@ -365,7 +371,8 @@ end = struct
                    { height; width = d_as_w; top = 0.; left = 0.; right = 0. })
                height depth)
             ~opts:
-              (opts ~left:max_width ~class_name ~plane_view:Plane_view.side ())
+              (opts ~left:max_width ~class_name ~plane_view:Plane_view.side
+                 ~width:max_depth ~height:max_height ())
             ();
         ]
     in
@@ -450,7 +457,8 @@ end = struct
             Rectangle.create
               ~opts:
                 (Rectangle.opts ~plane_view:Plane_view.top
-                   ~class_name:fill_class_name ())
+                   ~class_name:fill_class_name ~width:0.
+                   ~height:(array_max height) ())
               (Array.map
                  (fun height ->
                    Rectangle.Animate_dimensions.
@@ -476,7 +484,8 @@ end = struct
             Rectangle.create
               ~opts:
                 (Rectangle.opts ~plane_view:Plane_view.top
-                   ~class_name:fill_class_name ())
+                   ~class_name:fill_class_name ~width:(array_max width)
+                   ~height:(array_max height) ())
               (Array.map2
                  (fun height width ->
                    Rectangle.Animate_dimensions.
