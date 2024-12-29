@@ -355,8 +355,9 @@ module Icons = struct
            viewbox "0 0 24 24";
            svg_at "stroke-width" "1.5";
            svg_at "stroke" "currentColor";
+           svg_at "fill" "none";
          ]
-        @ svg_classes "size-5 inline stroke-slate-900 dark:stroke-white")
+        @ svg_classes "size-5 inline")
       [
         path
           ~at:
