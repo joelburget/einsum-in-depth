@@ -26,9 +26,6 @@ importers:
       d3:
         specifier: ^7.9.0
         version: 7.9.0
-      d3-force:
-        specifier: ^3.0.0
-        version: 3.0.0
       layout-base:
         specifier: ^2.0.1
         version: 2.0.1
