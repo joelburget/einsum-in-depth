@@ -64,9 +64,6 @@ let validate_inputs :
             ]
         else Ok ()
 
-let parse_path s =
-  s |> Path_parser.parse |> Result.map_error (fun msg -> (msg, ""))
-
 let trim_before_colon s =
   try
     let colon_index = String.index s ':' in
