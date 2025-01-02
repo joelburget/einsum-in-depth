@@ -126,7 +126,7 @@ end = struct
       else None
 end
 
-module Index_helpers : sig
+module Indexof_impl : sig
   val indexof : 'a -> 'a list -> int option
 end = struct
   let indexof x lst =
@@ -136,6 +136,8 @@ end = struct
     in
     go 0 lst
 end
+
+include Indexof_impl
 
 module Pyloops : sig
   type t = {
@@ -398,7 +400,7 @@ end = struct
   let make_common_shape tensors rhs =
     let index_set = String_set.of_list (List.flatten tensors) in
     let compare x y =
-      match Index_helpers.(indexof x rhs, indexof y rhs) with
+      match (indexof x rhs, indexof y rhs) with
       | None, None -> String.compare x y
       | Some a, Some b -> compare a b
       | Some _, None -> -1

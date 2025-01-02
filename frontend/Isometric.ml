@@ -630,7 +630,7 @@ end = struct
           let reordered_tensor =
             List.sort
               (fun a b ->
-                match Einops.Index_helpers.(indexof a rhs, indexof b rhs) with
+                match Einops.(indexof a rhs, indexof b rhs) with
                 | Some i, Some j -> compare i j
                 | Some _, None -> -1
                 | None, Some _ -> 1
