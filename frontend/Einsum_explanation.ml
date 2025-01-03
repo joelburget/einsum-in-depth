@@ -703,7 +703,7 @@ let tutorial container =
   let content =
     El.div
       [
-        h1 [ txt' "Einsum Tutorial" ];
+        h1 [ txt' "Einsum in Depth" ];
         p
           [
             a "https://en.wikipedia.org/wiki/Einstein_notation"
