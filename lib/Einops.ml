@@ -3,7 +3,6 @@ module String_map = Map.Make (String)
 module SS = String_set
 module SM = String_map
 
-type code_backend = Numpy | Pytorch
 type Format.stag += Colored of string
 
 module PP_var_impl : sig
@@ -147,7 +146,7 @@ module Pyloops : sig
     rhs_tensor : string list;
   }
 
-  val pp : ?use_frob:code_backend -> get_color -> t Fmt.t
+  val pp : ?use_frob:bool -> get_color -> t Fmt.t
 end = struct
   type t = {
     free_indices : SS.t;
@@ -158,7 +157,7 @@ end = struct
 
   let mk_indent indent = String.make (indent * 4) ' '
 
-  let pp ?use_frob get_color ppf
+  let pp ?(use_frob = false) get_color ppf
       {
         free_indices;
         summation_indices = summation_indices_set;
@@ -195,7 +194,7 @@ end = struct
       Fmt.pf ppf "%s[%a]" tensor Fmt.(list ~sep:comma pp_var) indices
     in
     (match use_frob with
-    | None -> (
+    | false -> (
         (match summation_indices with
         | [] -> ()
         | _ ->
@@ -229,7 +228,7 @@ end = struct
             Fmt.pf ppf "%sresult[@[%a@]] = total@." (mk_indent outer_indent)
               Fmt.(list ~sep:comma pp_var)
               free_indices)
-    | Some backend ->
+    | true ->
         (match rhs_tensor with
         | [] -> Fmt.pf ppf "%s@[<hov 4>total@ =@ " (mk_indent outer_indent)
         | _ ->
@@ -247,8 +246,7 @@ end = struct
                   tensor ))
             lhs_tensors
         in
-        Fmt.pf ppf "@[%s.sum(@[%a@])@]@]@."
-          (match backend with Numpy -> "np" | Pytorch -> "torch")
+        Fmt.pf ppf "@[np.sum(@[%a@])@]@]@."
           Fmt.(list ~sep:(any " * ") pp_access)
           accesses);
 

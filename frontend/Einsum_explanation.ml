@@ -315,32 +315,6 @@ let mk_tensor_diagram_info () =
            ];
        ])
 
-let mk_code_preference_selector () =
-  let preference_signal, set_preference = S.create Einops.Numpy in
-  let numpy_radio =
-    radio ~desc:"Numpy"
-      ~selected:
-        (preference_signal
-        |> S.map (function Einops.Numpy -> true | Pytorch -> false))
-      Einops.Numpy set_preference
-  in
-  let torch_radio =
-    radio ~desc:"Pytorch"
-      ~selected:
-        (preference_signal
-        |> S.map (function Einops.Numpy -> false | Pytorch -> true))
-      Einops.Pytorch set_preference
-  in
-  let selector =
-    Brr.El.(
-      fieldset
-        ~at:
-          (At.v (Jstr.v "role") (Jstr.v "radiogroup")
-          :: classes "mt-2 grid grid-cols-2 gap-3 max-w-48")
-        [ numpy_radio; torch_radio ])
-  in
-  (preference_signal, selector)
-
 module Icons = struct
   open Brr_svg
   open El
@@ -474,10 +448,6 @@ let tutorial container =
       current_input
   in
 
-  let code_preference_signal, code_preference_selector =
-    mk_code_preference_selector ()
-  in
-
   let interpretation_info ~valid_as_both =
     p
       [
@@ -556,25 +526,22 @@ let tutorial container =
       ]
   in
 
-  let render_explanation rewrite code_preference _syntax_preference =
+  let render_explanation rewrite _syntax_preference =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
     let text_color edge_name =
       match Hashtbl.find_opt edge_attributes edge_name with
       | None -> ""
       | Some Colors.{ text_classes; _ } -> text_classes
     in
-    let _framework_name, framework_code_name =
-      match code_preference with
-      | Einops.Numpy -> ("Numpy", "np")
-      | Pytorch -> ("Pytorch", "torch")
-    in
 
     let pyloops = Einops.Explain.show_loops rewrite in
     let python_code, code_ppf = make_formatter () in
-    Fmt.pf code_ppf "%a@?" (Einops.Pyloops.pp text_color) pyloops;
+    Fmt.pf code_ppf "%a@?"
+      (Einops.Pyloops.pp ~use_frob:false text_color)
+      pyloops;
     let frob_python_code, frob_code_ppf = make_formatter () in
     Fmt.pf frob_code_ppf "%a@?"
-      (Einops.Pyloops.pp ~use_frob:code_preference text_color)
+      (Einops.Pyloops.pp ~use_frob:true text_color)
       pyloops;
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
@@ -598,7 +565,6 @@ let tutorial container =
             " array and then iterate over every position in every axis, \
              building up the result.";
         ];
-      code_preference_selector;
       div
         ~at:(classes "flex flex-row my-4")
         [
@@ -613,7 +579,7 @@ let tutorial container =
         [
           txt'
             "In this next version of the code, we use the Frobenius product (";
-          code' (Fmt.str "%s.sum(inputs)" framework_code_name);
+          code' "np.sum(inputs)";
           txt' ") instead of iterating over each summation index individually.";
         ];
       div
@@ -645,26 +611,22 @@ let tutorial container =
   in
 
   let explanation_message_s =
-    S.l3
-      (fun rewrites code_preference syntax_preference ->
+    S.l2
+      (fun rewrites syntax_preference ->
         let explanation, opt_syntax_preference_message =
           match rewrites with
           | Ok friendly_rewrite, Ok original_rewrite -> (
               match syntax_preference with
               | Some Friendly | None ->
-                  ( render_explanation friendly_rewrite code_preference
-                      syntax_preference,
+                  ( render_explanation friendly_rewrite syntax_preference,
                     Some interpreted_as_friendly_message )
               | Some Original ->
-                  ( render_explanation original_rewrite code_preference
-                      syntax_preference,
+                  ( render_explanation original_rewrite syntax_preference,
                     Some interpreted_as_original_message ))
           | Ok rewrite, Error _ ->
-              ( render_explanation rewrite code_preference syntax_preference,
-                None )
+              (render_explanation rewrite syntax_preference, None)
           | Error _, Ok rewrite ->
-              ( render_explanation rewrite code_preference syntax_preference,
-                None )
+              (render_explanation rewrite syntax_preference, None)
           | Error msg, _ ->
               ([ div ~at:(classes "text-red-600") [ txt' msg ] ], None)
         in
@@ -674,7 +636,7 @@ let tutorial container =
           | None -> interpretation_info ~valid_as_both:false
         in
         (explanation, syntax_preference_message))
-      parsed_input_signal code_preference_signal syntax_preference_s
+      parsed_input_signal syntax_preference_s
   in
 
   let a href text =
