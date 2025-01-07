@@ -1048,7 +1048,7 @@ let tutorial container =
             El.li [ example "i, j -> i j"; txt' " (outer product)" ];
             El.li
               [
-                example "i j, j k l -> i j";
+                example "i k, j k l, i l -> i j";
                 txt' " (bilinear transformation, see ";
                 a "https://rockt.ai/2018/04/30/einsum" "Tim Rocktäschel's post";
                 txt' ")";
