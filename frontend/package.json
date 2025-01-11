@@ -9,11 +9,7 @@
   "dependencies": {
     "@elchininet/isometric": "git+https://github.com/joelburget/isometric.git",
     "@tailwindcss/typography": "^0.5.15",
-    "cose-base": "^2.2.0",
-    "cytoscape": "^3.30.4",
-    "cytoscape-fcose": "^2.2.0",
     "d3": "^7.9.0",
-    "layout-base": "^2.0.1",
     "parcel": "^2.13.2"
   },
   "scripts": {
