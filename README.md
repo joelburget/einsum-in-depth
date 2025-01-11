@@ -6,7 +6,7 @@ Explaining and exploring tensor operations.
 
 ```
 opam pin brr_svg git+https://gitlab.com/schutm/brr_svg
-opam install ppx_expect js_of_ocaml menhir note fmt brr
+opam install ppx_expect js_of_ocaml note fmt brr
 cd frontend
 pnpm tailwindcss -i input.css -o output.css
 cd ..
