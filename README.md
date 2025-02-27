@@ -1,6 +1,6 @@
-# Einsum Tutorial
+# Einsum In Depth
 
-Explaining and exploring tensor operations.
+Explaining what Einsums are actually doing. [Available online](https://einsum.joelburget.com/).
 
 ## Building and running
 
