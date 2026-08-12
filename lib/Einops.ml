@@ -146,6 +146,10 @@ module Pyloops : sig
     rhs_tensor : string list;
   }
 
+  val can_use_frob : t -> bool
+  (** Whether replacing the summation loops with sliced NumPy arrays preserves
+      the einsum semantics. *)
+
   val pp : ?use_frob:bool -> get_color -> t Fmt.t
 end = struct
   type t = {
@@ -154,6 +158,33 @@ end = struct
     lhs_tensors : string list list;
     rhs_tensor : string list;
   }
+
+  let rec is_prefix xs ys =
+    match (xs, ys) with
+    | [], _ -> true
+    | _, [] -> false
+    | x :: xs, y :: ys -> x = y && is_prefix xs ys
+
+  let is_suffix xs ys = is_prefix (List.rev xs) (List.rev ys)
+
+  let can_use_frob { summation_indices; lhs_tensors; _ } =
+    let has_repeated_indices tensor =
+      List.length tensor <> SS.cardinal (SS.of_list tensor)
+    in
+    let summation_indices_for tensor =
+      List.filter (fun index -> SS.mem index summation_indices) tensor
+    in
+    let sliced_axes = List.map summation_indices_for lhs_tensors in
+    let longest_sliced_axes =
+      List.fold_left
+        (fun longest axes ->
+          if List.length axes > List.length longest then axes else longest)
+        [] sliced_axes
+    in
+    (not (List.exists has_repeated_indices lhs_tensors))
+    && List.for_all
+         (fun axes -> is_suffix axes longest_sliced_axes)
+         sliced_axes
 
   let mk_indent indent = String.make (indent * 4) ' '
 
@@ -346,6 +377,34 @@ end = struct
                   total += A[b, i] * B[b, j]
                   result[b, i, j] = total
       return result
+      |}]
+
+  let%expect_test "can_use_frob" =
+    let go (rewrite : Rewrite.t) =
+      show_loops rewrite |> Pyloops.can_use_frob |> Fmt.pr "%b@."
+    in
+    (* Matrix multiplication: both sliced operands have the same [k] axis. *)
+    go ([ [ "i"; "k" ]; [ "k"; "j" ] ], [ "i"; "j" ]);
+    (* Repeated indices require diagonal selection, not independent slices. *)
+    go ([ [ "i"; "i" ] ], []);
+    (* The sliced axes [k] and [k; l] do not align from the right. *)
+    go
+      ( [ [ "i"; "k" ]; [ "j"; "k"; "l" ]; [ "i"; "l" ] ],
+        [ "i"; "j" ] );
+    (* [b] is not a suffix of [b; c]. *)
+    go ([ [ "a"; "b" ]; [ "b"; "c" ] ], []);
+    (* Neither [s] nor [t] is a suffix-aligned subset of [s; t]. *)
+    go ([ [ "s" ]; [ "s"; "t" ]; [ "t" ] ], []);
+    (* NumPy can broadcast scalar and [b] slices against [a; b]. *)
+    go ([ [ "a"; "b" ]; [ "b" ]; [ "i" ] ], [ "i" ]);
+    [%expect
+      {|
+      true
+      false
+      false
+      false
+      false
+      true
       |}]
 end
 

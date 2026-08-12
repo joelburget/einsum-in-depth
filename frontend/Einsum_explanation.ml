@@ -539,10 +539,34 @@ let tutorial container =
     Fmt.pf code_ppf "%a@?"
       (Einops.Pyloops.pp ~use_frob:false text_color)
       pyloops;
-    let frob_python_code, frob_code_ppf = make_formatter () in
-    Fmt.pf frob_code_ppf "%a@?"
-      (Einops.Pyloops.pp ~use_frob:true text_color)
-      pyloops;
+    let frob_explanation =
+      if Einops.Pyloops.can_use_frob pyloops then (
+        let frob_python_code, frob_code_ppf = make_formatter () in
+        Fmt.pf frob_code_ppf "%a@?"
+          (Einops.Pyloops.pp ~use_frob:true text_color)
+          pyloops;
+        [
+          p
+            [
+              txt'
+                "In this next version of the code, we use the Frobenius product (";
+              code' "np.sum(inputs)";
+              txt'
+                ") instead of iterating over each summation index individually.";
+            ];
+          div
+            ~at:(classes "flex flex-row my-4")
+            [
+              El.pre
+                [
+                  code
+                    ~at:(classes "before:content-[''] after:content-['']")
+                    [ frob_python_code ];
+                ];
+            ];
+        ])
+      else []
+    in
     let free_indices = String_set.to_list pyloops.free_indices in
     let summation_indices = String_set.to_list pyloops.summation_indices in
     let lhs, rhs = rewrite in
@@ -575,23 +599,9 @@ let tutorial container =
                 [ python_code ];
             ];
         ];
-      p
-        [
-          txt'
-            "In this next version of the code, we use the Frobenius product (";
-          code' "np.sum(inputs)";
-          txt' ") instead of iterating over each summation index individually.";
-        ];
-      div
-        ~at:(classes "flex flex-row my-4")
-        [
-          El.pre
-            [
-              code
-                ~at:(classes "before:content-[''] after:content-['']")
-                [ frob_python_code ];
-            ];
-        ];
+    ]
+    @ frob_explanation
+    @ [
       h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Medium-level" ];
       div
         (match Isometric.Scene.render ~edge_attributes lhs rhs with
