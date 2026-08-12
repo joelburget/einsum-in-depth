@@ -444,7 +444,9 @@ let tutorial container =
 
   let parsed_input_signal =
     S.map
-      (fun str -> str |> trim_before_colon |> Einsum_parser.parse)
+      (fun str ->
+        let str = trim_before_colon str in
+        (Einsum_parser.parse str, Einsum_parser.prefers_original_notation str))
       current_input
   in
 
@@ -571,7 +573,7 @@ let tutorial container =
     let summation_indices = String_set.to_list pyloops.summation_indices in
     let lhs, rhs = rewrite in
     [
-      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Low-level: Python Code" ];
+      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Low-level: Python code" ];
       p
         [
           txt'
@@ -602,7 +604,9 @@ let tutorial container =
     ]
     @ frob_explanation
     @ [
-      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Medium-level" ];
+      h2
+        ~at:(classes "text-xl mt-3 mb-1")
+        [ txt' "Medium-level: isometric diagrams" ];
       div
         (match Isometric.Scene.render ~edge_attributes lhs rhs with
         | Some render -> [ render ]
@@ -622,17 +626,23 @@ let tutorial container =
 
   let explanation_message_s =
     S.l2
-      (fun rewrites syntax_preference ->
+      (fun (rewrites, prefers_original_notation) syntax_preference ->
         let explanation, opt_syntax_preference_message =
           match rewrites with
           | Ok friendly_rewrite, Ok original_rewrite -> (
               match syntax_preference with
-              | Some Friendly | None ->
+              | Some Friendly ->
                   ( render_explanation friendly_rewrite syntax_preference,
                     Some interpreted_as_friendly_message )
               | Some Original ->
                   ( render_explanation original_rewrite syntax_preference,
-                    Some interpreted_as_original_message ))
+                    Some interpreted_as_original_message )
+              | None when prefers_original_notation ->
+                  ( render_explanation original_rewrite syntax_preference,
+                    Some interpreted_as_original_message )
+              | None ->
+                  ( render_explanation friendly_rewrite syntax_preference,
+                    Some interpreted_as_friendly_message ))
           | Ok rewrite, Error _ ->
               (render_explanation rewrite syntax_preference, None)
           | Error _, Ok rewrite ->
@@ -832,7 +842,7 @@ let tutorial container =
               "Hadamard product";
             txt' ".";
           ];
-        h1 [ txt' "Three ways to think about contractions" ];
+        h2 [ txt' "Three Ways to Think About Contractions" ];
         p
           [
             txt'
@@ -879,7 +889,7 @@ let tutorial container =
                      "I hadn't previously seen this interpretation, so I wrote \
                       a ";
                    a
-                     "https://github.com/joelburget/einsum-tutorial/blob/main/verify_consistency.py"
+                     "https://github.com/joelburget/einsum-in-depth/blob/main/verify_consistency.py"
                      "script";
                    txt' " to confirm that it is consistent with the other two.";
                  ]);
@@ -1037,7 +1047,7 @@ let tutorial container =
               "opt_einsum docs";
             txt' " for more.";
           ];
-        h1 [ txt' "Examples" ];
+        h2 [ txt' "Examples" ];
         p
           [
             txt'
@@ -1045,7 +1055,7 @@ let tutorial container =
                examples, here are some examples you might come across in \
                practice.";
           ];
-        h2 [ txt' "Linear Algebra" ];
+        h3 [ txt' "Linear Algebra" ];
         El.ul
           [
             El.li [ example "a b, b c -> a c"; txt' " (matrix multiplication)" ];
@@ -1064,7 +1074,7 @@ let tutorial container =
                 txt' ")";
               ];
           ];
-        h2 [ txt' "Machine Learning" ];
+        h3 [ txt' "Machine Learning" ];
         El.ul
           [
             El.li
@@ -1097,7 +1107,7 @@ let tutorial container =
                   ];
               ];
           ];
-        h2 [ txt' "Other Resources" ];
+        h3 [ txt' "Other Resources" ];
         El.ul
           [
             El.li
@@ -1138,7 +1148,7 @@ let tutorial container =
              txt' "Built by Joel Burget ";
              icon_link "https://joelburget.com" Icons.website;
              icon_link "https://x.com/joel_burget" Icons.x;
-             icon_link "https://github.com/joelburget/einsum-tutorial"
+             icon_link "https://github.com/joelburget/einsum-in-depth"
                Icons.github;
            ]);
       ]
@@ -1152,7 +1162,8 @@ let tutorial container =
            "flex-1 md:w-1/2 w-full overflow-y-auto border-r p-4 prose \
             dark:prose-invert prose-p:my-2 prose-pre:bg-gray-100 \
             prose-pre:dark:bg-[#00000080] prose-pre:text-gray-900 \
-            prose-pre:dark:text-[#d1d5db]")
+            prose-pre:dark:text-[#d1d5db] prose-code:before:content-none \
+            prose-code:after:content-none")
       [ content ]
   in
 
@@ -1178,7 +1189,6 @@ let tutorial container =
           [
             El.h2 ~at:(classes "text-2xl") [ txt' "Explanation" ]; close_button;
           ];
-        El.p [ txt' "Click on an example to see its explanation here." ];
         syntax_message_container;
         result_container;
       ]
@@ -1191,7 +1201,11 @@ let tutorial container =
   Elr.def_children syntax_message_container
     (S.map
        (fun msg ->
-         [ txt' "Or enter your own contraction: "; c_input; info msg ])
+         [
+           txt' "Click any highlighted expression, or enter your own contraction: ";
+           c_input;
+           info msg;
+         ])
        syntax_preference_message_s);
 
   (* Overlay: click on the left pane to show the right pane *)

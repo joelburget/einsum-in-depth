@@ -159,3 +159,31 @@ module Original = struct
 end
 
 let parse str = (Friendly.parse str, Original.parse str)
+
+let prefers_original_notation str =
+  let rec parse_lhs saw_multichar group_has_token = function
+    | Str s :: tokens ->
+        if group_has_token then false
+        else
+          parse_lhs
+            (saw_multichar || String.length s > 1)
+            true tokens
+    | Comma :: tokens ->
+        group_has_token && parse_lhs saw_multichar false tokens
+    | Arrow :: tokens ->
+        group_has_token && parse_rhs saw_multichar false tokens
+    | [ Eof ] -> group_has_token && saw_multichar
+    | Eof :: _ | [] -> false
+  and parse_rhs saw_multichar group_has_token = function
+    | Str s :: tokens ->
+        if group_has_token then false
+        else
+          parse_rhs
+            (saw_multichar || String.length s > 1)
+            true tokens
+    | [ Eof ] -> saw_multichar
+    | (Comma | Arrow | Eof) :: _ | [] -> false
+  in
+  match Lex_impl.lex_unsafe str with
+  | tokens -> parse_lhs false false tokens
+  | exception Error _ -> false
