@@ -297,7 +297,7 @@ let mk_tensor_diagram_info () =
          p
            [
              txt'
-               "Each node in a tensor diagram represents a tensor (e.g a \
+               "Each node in a tensor diagram represents a tensor (e.g. a \
                 matrix or vector). Each line emanating from a tensor \
                 represents one of that tensor's dimensions. When two tensors \
                 are connected by a single line that represents a contraction \

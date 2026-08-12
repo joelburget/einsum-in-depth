@@ -450,7 +450,7 @@ let rec unsnoc = function
 let list_variables get_classes vars =
   let mk_code x = code ~at:(classes (get_classes x)) [ txt' x ] in
   match vars with
-  | [] -> [ txt' "in his case there are none" ]
+  | [] -> [ txt' "in this case there are none" ]
   | [ x ] -> [ mk_code x ]
   | [ x; y ] -> [ mk_code x; txt' " and "; mk_code y ]
   | xs ->
