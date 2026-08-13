@@ -1,0 +1,9 @@
+packages:
+  - "."
+
+onlyBuiltDependencies:
+  - "@elchininet/isometric"
+  - "@parcel/watcher"
+  - "@swc/core"
+  - lmdb
+  - msgpackr-extract

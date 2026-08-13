@@ -1,3 +1,5 @@
+(dirs :standard \ node_modules)
+
 (executable
  (name tensor_playground_web)
  (modes js)
@@ -22,3 +24,4 @@
 (alias
  (name app)
  (deps tensor_playground_web.js index.html))
+
