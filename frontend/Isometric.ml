@@ -555,7 +555,8 @@ end = struct
       div
         ~at:
           (classes
-             "mt-3 mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400")
+             "mt-4 mb-1 text-xs font-semibold uppercase tracking-wider \
+              text-slate-500 dark:text-slate-400")
         children
     in
     let Einops.Steps.{ diagonalized; broadcast } =

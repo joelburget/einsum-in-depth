@@ -108,9 +108,12 @@ let input' :
 
 let input_classes =
   classes
-    "rounded-md border-0 px-3 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset \
-     ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset \
-     focus:ring-indigo-600 sm:text-sm sm:leading-6"
+    "rounded-lg border-0 px-3 py-1.5 font-mono text-sm leading-6 \
+     text-slate-900 bg-white dark:bg-slate-950/60 dark:text-slate-100 \
+     shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 \
+     placeholder:text-slate-400 dark:placeholder:text-slate-500 \
+     focus:ring-2 focus:ring-inset focus:ring-indigo-500 \
+     dark:focus:ring-indigo-400"
 
 let parsed_input :
     type a.
@@ -121,7 +124,9 @@ let parsed_input :
   let input_elem =
     input ~at:([ At.value (Jstr.of_string start_value) ] @ input_classes) ()
   in
-  let parse_error_elem = div ~at:(classes "text-red-600") [] in
+  let parse_error_elem =
+    div ~at:(classes "text-red-600 dark:text-red-400") []
+  in
 
   let input_signal, set_input = S.create start_value in
   let parse_error_signal, set_parse_error = S.create [] in
@@ -264,7 +269,12 @@ end = struct
 
     let button =
       El.button
-        ~at:[ type' "button" ]
+        ~at:
+          (type' "button"
+          :: classes
+               "align-middle text-slate-400 hover:text-indigo-500 \
+                dark:text-slate-500 dark:hover:text-indigo-300 \
+                transition-colors")
         [ span ~at:(classes "inline-flex") [ embed_svg (info_svg ()) ] ]
     in
     let click_button_event =
@@ -300,8 +310,9 @@ end = struct
                        ~at:
                          (classes
                             "w-screen max-w-md flex-auto overflow-hidden \
-                             rounded-md bg-white dark:bg-slate-800 text-sm/6 \
-                             shadow-lg ring-1 ring-gray-900/5 p-3")
+                             rounded-xl bg-white dark:bg-slate-800 text-sm/6 \
+                             text-slate-700 dark:text-slate-200 shadow-xl \
+                             ring-1 ring-slate-900/10 dark:ring-white/10 p-4")
                        [ child ];
                    ];
                ]

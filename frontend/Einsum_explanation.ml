@@ -7,7 +7,17 @@ open Tensor_playground
 let code' text = code [ txt' text ]
 
 let text_button_classes =
-  classes "not-prose text-indigo-500 dark:text-indigo-200 hover:text-gray-700"
+  classes
+    "not-prose font-mono text-[0.875em] text-indigo-700 dark:text-indigo-300 \
+     bg-indigo-50 dark:bg-indigo-400/10 px-1.5 py-0.5 rounded-md ring-1 \
+     ring-inset ring-indigo-200 dark:ring-indigo-400/30 hover:bg-indigo-100 \
+     dark:hover:bg-indigo-400/20 hover:ring-indigo-300 \
+     dark:hover:ring-indigo-400/50 transition-colors"
+
+let section_heading_classes =
+  classes
+    "text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100 \
+     mt-8 mb-3"
 
 let trim_before_colon s =
   try
@@ -98,7 +108,9 @@ let mk_tensor_diagram_info () =
   info
     (div
        [
-         h2 ~at:(classes "text-lg") [ txt' "Interpreting a Tensor Diagram" ];
+         h2
+           ~at:(classes "text-base font-semibold mb-1")
+           [ txt' "Interpreting a Tensor Diagram" ];
          p
            [
              txt'
@@ -211,7 +223,10 @@ let tutorial container =
 
   let close_button =
     El.button
-      ~at:(classes "md:hidden text-blue-500 font-semibold")
+      ~at:
+        (classes
+           "md:hidden text-sm font-semibold text-indigo-600 \
+            dark:text-indigo-300 hover:text-indigo-500")
       [ txt' "Close" ]
   in
 
@@ -243,7 +258,9 @@ let tutorial container =
   in
 
   let logger, c_input, current_input =
-    input' ~at:input_classes "a b, b c -> a c" clicked_op_in_text_e
+    input'
+      ~at:(input_classes @ classes "w-full max-w-sm")
+      "a b, b c -> a c" clicked_op_in_text_e
   in
   Logr.may_hold logger;
 
@@ -333,6 +350,21 @@ let tutorial container =
       ]
   in
 
+  let code_block contents =
+    div
+      ~at:(classes "my-4")
+      [
+        El.pre
+          ~at:
+            (classes
+               "overflow-x-auto rounded-lg bg-white dark:bg-slate-950/60 \
+                px-4 py-3 text-sm leading-6 text-slate-800 \
+                dark:text-slate-200 shadow-sm ring-1 ring-slate-200 \
+                dark:ring-slate-700")
+          [ contents ];
+      ]
+  in
+
   let render_explanation rewrite _syntax_preference =
     let edge_attributes = Colors.assign_edge_attributes (fst rewrite) in
     let text_color edge_name =
@@ -361,16 +393,7 @@ let tutorial container =
               txt'
                 ") instead of iterating over each summation index individually.";
             ];
-          div
-            ~at:(classes "flex flex-row my-4")
-            [
-              El.pre
-                [
-                  code
-                    ~at:(classes "before:content-[''] after:content-['']")
-                    [ frob_python_code ];
-                ];
-            ];
+          code_block frob_python_code;
         ])
       else []
     in
@@ -378,7 +401,7 @@ let tutorial container =
     let summation_indices = String_set.to_list pyloops.summation_indices in
     let lhs, rhs = rewrite in
     [
-      h2 ~at:(classes "text-xl mt-3 mb-1") [ txt' "Low-level: Python code" ];
+      h2 ~at:section_heading_classes [ txt' "Low-level: Python code" ];
       p
         [
           txt'
@@ -396,22 +419,11 @@ let tutorial container =
             " array and then iterate over every position in every axis, \
              building up the result.";
         ];
-      div
-        ~at:(classes "flex flex-row my-4")
-        [
-          El.pre
-            [
-              code
-                ~at:(classes "before:content-[''] after:content-['']")
-                [ python_code ];
-            ];
-        ];
+      code_block python_code;
     ]
     @ frob_explanation
     @ [
-      h2
-        ~at:(classes "text-xl mt-3 mb-1")
-        [ txt' "Medium-level: isometric diagrams" ];
+      h2 ~at:section_heading_classes [ txt' "Medium-level: isometric diagrams" ];
       div
         (match Isometric.Scene.render ~edge_attributes lhs rhs with
         | Some render -> [ render ]
@@ -422,8 +434,7 @@ let tutorial container =
                  intermediate tensors, which may be bigger than all inputs and \
                  the output!) are of dimension 3 or less.";
             ]);
-      h2
-        ~at:(classes "text-xl mt-3 mb-1")
+      h2 ~at:section_heading_classes
         [ txt' "High-level: tensor diagram"; mk_tensor_diagram_info () ];
       div [ Tensor_diagram.draw_einsum edge_attributes lhs rhs ];
     ]
@@ -453,7 +464,16 @@ let tutorial container =
           | Error _, Ok rewrite ->
               (render_explanation rewrite syntax_preference, None)
           | Error msg, _ ->
-              ([ div ~at:(classes "text-red-600") [ txt' msg ] ], None)
+              ( [
+                  div
+                    ~at:
+                      (classes
+                         "my-4 rounded-lg bg-red-50 dark:bg-red-950/40 px-4 \
+                          py-3 text-sm text-red-700 dark:text-red-300 ring-1 \
+                          ring-inset ring-red-200 dark:ring-red-900")
+                    [ txt' msg ];
+                ],
+                None )
         in
         let syntax_preference_message =
           match opt_syntax_preference_message with
@@ -964,11 +984,10 @@ let tutorial container =
     El.div
       ~at:
         (classes
-           "flex-1 md:w-1/2 w-full overflow-y-auto border-r p-4 prose \
-            dark:prose-invert prose-p:my-2 prose-pre:bg-gray-100 \
-            prose-pre:dark:bg-[#00000080] prose-pre:text-gray-900 \
-            prose-pre:dark:text-[#d1d5db] prose-code:before:content-none \
-            prose-code:after:content-none")
+           "flex-1 md:w-1/2 w-full overflow-y-auto border-r border-slate-200 \
+            dark:border-slate-700 px-5 py-8 sm:px-8 prose prose-slate \
+            dark:prose-invert prose-p:my-3 prose-headings:tracking-tight \
+            prose-code:before:content-none prose-code:after:content-none")
       [ content ]
   in
 
@@ -982,17 +1001,26 @@ let tutorial container =
          (* On mobile: fixed overlay hidden by default (translate-y-full),
             can be toggled via JS to show/hide *)
          classes
-           "flex-1 md:w-1/2 w-full overflow-y-auto p-4 bg-gray-50 \
-            dark:bg-gray-800 md:static md:translate-y-0 md:relative fixed \
-            bottom-0 left-0 right-0 top-0 transform transition-transform \
-            duration-300 ease-in-out md:border-none border-t border-gray-300 \
-            z-50")
+           "flex-1 md:w-1/2 w-full overflow-y-auto px-5 py-8 sm:px-8 \
+            bg-slate-50 dark:bg-slate-800 md:static md:translate-y-0 \
+            md:relative fixed bottom-0 left-0 right-0 top-0 transform \
+            transition-transform duration-300 ease-in-out md:border-none \
+            border-t border-slate-200 dark:border-slate-700 z-50")
         (* translate-y-full *)
       [
         El.div
-          ~at:(classes "flex items-center justify-between border-b pb-2 mb-4")
+          ~at:
+            (classes
+               "flex items-center justify-between border-b border-slate-200 \
+                dark:border-slate-700 pb-3 mb-5")
           [
-            El.h2 ~at:(classes "text-2xl") [ txt' "Explanation" ]; close_button;
+            El.h2
+              ~at:
+                (classes
+                   "text-xl font-semibold tracking-tight text-slate-900 \
+                    dark:text-slate-100")
+              [ txt' "Explanation" ];
+            close_button;
           ];
         syntax_message_container;
         result_container;
@@ -1007,9 +1035,16 @@ let tutorial container =
     (S.map
        (fun msg ->
          [
-           txt' "Click any highlighted expression, or enter your own contraction: ";
-           c_input;
-           info msg;
+           p
+             ~at:(classes "text-sm text-slate-600 dark:text-slate-400 mb-2")
+             [
+               txt'
+                 "Click any highlighted expression, or enter your own \
+                  contraction:";
+             ];
+           div
+             ~at:(classes "flex items-center gap-2 mb-2")
+             [ c_input; info msg ];
          ])
        syntax_preference_message_s);
 
