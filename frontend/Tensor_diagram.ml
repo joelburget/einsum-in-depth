@@ -85,11 +85,13 @@ let draw_einsum edge_attributes lhs rhs =
       (String_set.to_list summation)
   in
 
+  (* Name tensors A, B, C, ... to match the generated Python code. *)
   let tensor_nodes =
     lhs
     |> List.mapi (fun i _x ->
            let id = Fmt.str "tensor-%d" i in
-           Node.{ id; label = ""; node_type = Tensor; class_name = "" })
+           let label = String.make 1 (Char.chr (i + 65)) in
+           Node.{ id; label; node_type = Tensor; class_name = "" })
     |> Array.of_list
   in
 
@@ -165,6 +167,8 @@ let draw_einsum edge_attributes lhs rhs =
           in
           Queue.add edge edges);
 
+      (* A repeated index in one tensor would draw identical overlapping
+         lines, so only consider each index once per tensor. *)
       List.iter
         (fun name ->
           let contracted_in_pair' = String_set.mem name contracted_in_pair in
@@ -179,7 +183,6 @@ let draw_einsum edge_attributes lhs rhs =
               else (Fmt.str "group-%s" name, "")
             in
             if contracted_in_pair' then Hashtbl.add pair_edges_seen name ();
-            Brr.Console.log [ "edge"; name; get_color name ];
             let edge =
               Edge.
                 {
@@ -190,7 +193,7 @@ let draw_einsum edge_attributes lhs rhs =
                 }
             in
             Queue.add edge edges)
-        edge_names)
+        (List.sort_uniq String.compare edge_names))
     lhs;
 
   let edges = edges |> Queue.to_seq |> Array.of_seq in

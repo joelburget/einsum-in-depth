@@ -126,13 +126,20 @@ function renderTensorDiagram(container, nodes, edges) {
   node
     .append("circle")
     .attr("r", 10)
-    .attr("fill", "#69b3a2")
+    .attr("class", "fill-indigo-600 dark:fill-indigo-300")
     .attr("visibility", (d) => (d.type === "edge" ? "hidden" : "visible"));
 
+  // Tensor nodes show their name (A, B, ...) centered inside the circle;
+  // edge nodes show the index name in that index's color.
   node
     .append("text")
     .text((d) => d.label)
-    .attr("class", (d) => d.class_name);
+    .attr("class", (d) =>
+      d.type === "tensor" ? "fill-white dark:fill-slate-900 font-mono" : d.class_name,
+    )
+    .attr("text-anchor", (d) => (d.type === "tensor" ? "middle" : null))
+    .attr("dy", (d) => (d.type === "tensor" ? "0.35em" : null))
+    .attr("font-size", (d) => (d.type === "tensor" ? 11 : null));
 }
 
 window.renderTensorDiagram = renderTensorDiagram;

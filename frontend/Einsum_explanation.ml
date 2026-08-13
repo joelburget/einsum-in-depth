@@ -1208,6 +1208,13 @@ let tutorial container =
          ])
        syntax_preference_message_s);
 
+  (* Clicking an example loads a new explanation, so scroll back to the top of
+     the (independently scrollable) explanation pane. *)
+  Logr.may_hold
+    E.(
+      log clicked_op_in_text_e (fun _ ->
+          Jv.set (El.to_jv right_pane) "scrollTop" (Jv.of_int 0)));
+
   (* Overlay: click on the left pane to show the right pane *)
   Elr.def_class (Jstr.v "translate-y-full") overlay_hidden_s right_pane;
 

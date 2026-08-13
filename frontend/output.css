@@ -1516,6 +1516,10 @@ video {
   fill: #6b7280;
 }
 
+.fill-indigo-600 {
+  fill: #4f46e5;
+}
+
 .fill-indigo-800 {
   fill: #3730a3;
 }
@@ -1546,6 +1550,10 @@ video {
 
 .fill-teal-800 {
   fill: #115e59;
+}
+
+.fill-white {
+  fill: #fff;
 }
 
 .p-3 {
@@ -1630,6 +1638,10 @@ video {
 
 .align-middle {
   vertical-align: middle;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .text-2xl {
@@ -2144,6 +2156,10 @@ video {
     fill: #a7f3d0;
   }
 
+  .dark\:fill-indigo-300 {
+    fill: #a5b4fc;
+  }
+
   .dark\:fill-lime-100 {
     fill: #ecfccb;
   }
@@ -2162,6 +2178,10 @@ video {
 
   .dark\:fill-slate-300 {
     fill: #cbd5e1;
+  }
+
+  .dark\:fill-slate-900 {
+    fill: #0f172a;
   }
 
   .dark\:fill-stone-100 {
@@ -2194,6 +2214,11 @@ video {
   .dark\:text-emerald-200 {
     --tw-text-opacity: 1;
     color: rgb(167 243 208 / var(--tw-text-opacity, 1));
+  }
+
+  .dark\:text-gray-400 {
+    --tw-text-opacity: 1;
+    color: rgb(156 163 175 / var(--tw-text-opacity, 1));
   }
 
   .dark\:text-indigo-200 {

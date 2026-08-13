@@ -551,6 +551,13 @@ end = struct
     let get_classes edge_name = get_class_name edge_attributes edge_name in
     let rows = Queue.create () in
     let div, span, txt' = Brr.El.(div, span, txt') in
+    let step_label children =
+      div
+        ~at:
+          (classes
+             "mt-3 mb-1 text-sm font-semibold text-gray-500 dark:text-gray-400")
+        children
+    in
     let Einops.Steps.{ diagonalized; broadcast } =
       Einops.Steps.make (lhs, rhs)
     in
@@ -577,7 +584,7 @@ end = struct
       (canvas, container)
     in
 
-    Queue.add (div [ txt' "Start" ]) rows;
+    Queue.add (step_label [ txt' "Start" ]) rows;
     let row =
       List.map
         (fun tensor ->
@@ -603,7 +610,7 @@ end = struct
     in
     let elem =
       if diagonals_exist then (
-        Queue.add (div [ txt' "Diagonalize" ]) rows;
+        Queue.add (step_label [ txt' "Diagonalize" ]) rows;
         let row =
           List.map
             (fun tensor ->
@@ -656,7 +663,7 @@ end = struct
           | false, true -> "Broadcast"
           | false, false -> assert false
         in
-        Queue.add (div [ txt' msg ]) rows;
+        Queue.add (step_label [ txt' msg ]) rows;
         let row =
           List.map
             (fun diag_tensor ->
@@ -706,7 +713,7 @@ end = struct
       match reordered with
       | [ _ ] -> div [ (* txt' "(only one tensor, no pointwise multiply)" *) ]
       | _ ->
-          Queue.add (div [ txt' "Pointwise Multiply" ]) rows;
+          Queue.add (step_label [ txt' "Pointwise Multiply" ]) rows;
           let canvas, container = mk_canvas () in
           let tensor =
             Tensor.create ~draw_diag:false ~edge_attributes
@@ -727,7 +734,7 @@ end = struct
           String_set.(diff (of_list broadcast) (of_list rhs) |> to_list)
         in
         Queue.add
-          (div
+          (step_label
              [
                txt' "Contract ";
                span (Frontend_util.list_variables get_classes axes_to_contract);
