@@ -4,15 +4,12 @@
  (name tensor_playground_web)
  (modes js)
  (modules
-  Broadcast_explanation
   Colors
-  Contraction_explanation
   Einsum_explanation
   Frontend_util
   Isometric
   Tensor_diagram
-  Tensor_playground_web
-  Vector_matrix_explanation)
+  Tensor_playground_web)
  (libraries brr brr_svg fmt note note.brr tensor_playground))
 
 (rule
